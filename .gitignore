@@ -148,3 +148,8 @@ _generated/
 
 # npm compilation
 crowdsourcing/**/package-lock.json
+
+
+# HONGIN
+pbst.code-workspace
+data/

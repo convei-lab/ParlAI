@@ -75,6 +75,17 @@ task_list = [
         ),
     },
     {
+        "id": "pbst",
+        "display_name": "Pseudo Blended Skill Talk",
+        "task": "pbst`",
+        "tags": ["ChitChat"],
+        "description": (
+            "A machine-generated dataset for blending multiple conversational skills "
+            "with explicit conversation modes: e.g. displaying personality, having "
+            "empathy, and demonstrating knowledge."
+        ),
+    },
+    {
         "id": "BookTest",
         "display_name": "BookTest",
         "task": "booktest",

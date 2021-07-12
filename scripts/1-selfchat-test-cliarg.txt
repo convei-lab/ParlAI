@@ -1,0 +1,117 @@
+셀프챗의 CLI arguments
+https://parl.ai/docs/cli_usage.html
+
+Argument
+
+Description
+
+-o, --init-opt
+
+Path to json file of options. Note: Further Command-line arguments override file-based options.
+
+--allow-missing-init-opts
+
+Warn instead of raising if an argument passed in with –init-opt is not in the target opt.
+
+-t, --task
+
+ParlAI task(s), e.g. “babi:Task1” or “babi,cbt”
+Default: self_chat.
+
+-dt, --datatype
+
+Choose from: train, train:ordered, valid, test. to stream data add “:stream” to any option (e.g., train:stream). by default train is random with replacement, valid is ordered, test is ordered.
+Choices: train, train:stream, train:ordered, train:ordered:stream, train:stream:ordered, train:evalmode, train:evalmode:stream, train:evalmode:ordered, train:evalmode:ordered:stream, train:evalmode:stream:ordered, valid, valid:stream, test, test:stream
+Default: train.
+
+-bs, --batchsize
+
+Batch size for minibatch training schemes
+Default: 1.
+
+-dynb, --dynamic-batching
+
+Use dynamic batching
+Choices: full, batchsort, None
+
+-v, --verbose
+
+Print all messages
+
+--debug
+
+Enables some debug behavior
+
+-dp, --datapath
+
+Path to datasets, defaults to {parlai_dir}/data
+
+-m, --model
+
+The model class name. can match parlai/agents/ for agents in that directory, or can provide a fully specified module for from X import Y via -m X:Y (e.g. -m parlai.agents.seq2seq.seq2seq:Seq2SeqAgent)
+
+-mf, --model-file
+
+Model file name for loading and saving models
+
+-im, --init-model
+
+Initialize model weights and dict from this file
+
+--seed
+
+Default: 42.
+
+-d, --display-examples
+
+Default: True.
+
+--display-add-fields
+
+Display these fields when verbose is off (e.g., “–display-add-fields label_candidates,beam_texts”)
+
+-st, --selfchat-task
+
+Create a self chat version of the task
+Default: True.
+
+--num-self-chats
+
+Number of self chats to run
+Default: 1.
+
+--selfchat-max-turns
+
+The number of dialogue turns before self chat ends
+Default: 6.
+
+--seed-messages-from-task
+
+Automatically seed conversation with messages from task dataset.
+
+--seed-messages-from-file
+
+If specified, loads newline-separated strings from the file as conversation starters.
+
+--outfile
+
+File to save self chat logs
+
+--save-format
+
+Format to save logs in. conversations is a jsonl format, parlai is a text format.
+Choices: conversations, parlai
+Default: conversations.
+
+-pmf, --partner-model-file
+
+Define a different partner for self chat
+
+--partner-opt-file
+
+Path to file containing opts to override for partner
+
+--log-keep-fields
+
+Fields to keep when logging. Should be a comma separated list
+Default: all.

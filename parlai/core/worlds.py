@@ -1238,7 +1238,7 @@ class BackgroundDriverWorld(World):
 
         import torch.multiprocessing as mp
 
-        self._num_workers = self.opt['num_workers']
+        self._num_workers = self.opt['um_workers']
         # 4 per worker is somewhat arbitrary. 1 is potentially too few:
         # every worker is prevented from queuing up multiple batches.
         # Unbounded could fill up our memory too much. So 4 per worker.
