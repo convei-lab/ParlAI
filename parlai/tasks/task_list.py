@@ -1204,6 +1204,13 @@ task_list = [
         "description": "Not a dataset, but a generic world for model self-chats.",
     },
     {
+        "id": "SelfMix",
+        "display_name": "SelfMix",
+        "task": "self_mix",
+        "tags": [],
+        "description": "Not a dataset, but a generic world for models self-mix themselves.",
+    },
+    {
         "id": "OneCommon",
         "display_name": "OneCommon",
         "task": "onecommon",
