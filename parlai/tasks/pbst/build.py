@@ -22,6 +22,9 @@ from typing import Tuple, Dict, List
 from math import isclose
 from collections import OrderedDict
 
+from icecream import ic
+from parlai.scripts.eval_model import eval_model
+
 RESOURCES = {
     'convai2': DownloadableFile(
         'http://parl.ai/downloads/convai2/convai2_fix_723.tgz',
@@ -279,11 +282,48 @@ def _parse_task_dataset(subtask, subtaskpath
         seeds.extend(fseeds)
     return leading_contextss, following_contextss, seeds
 
-def _retrieve_contextual_document(seed_queries: List[str], contextual_docs: List[str]
-    )-> List[int]: 
-    '''
-        assert len(seed_queries) == len(retrieved_doc_idx)
-    '''
+def _retrieve_contextual_document(seed_queries, subtaskpaths, target):
+    # EDITED BY MINJU
+    parlai_data_path = '/home/minju/ParlAI/data/'
+
+    opt = {}
+    if target == 'convai2':
+        opt['task'] = 'persona_inference:retrieval'
+    elif target == 'wizard_of_wikipedia':
+        opt['task'] = 'topic_inference:retrieval'
+    else:
+        opt['task'] = 'emotion_inference:retrieval'
+
+    split = opt['task'].split(':')
+
+    # --world-logs true --report-filename ~/bst/convai_generation.json
+    opt['model_file'] = '/home/minju/bst/models/' + split[0] + '/model'
+    opt['model'] = 'transformer/biencoder'
+    opt['eval_candidates'] = 'fixed'
+    opt['fixed_candidates_path'] = parlai_data_path + split[0] + '/fixed_candidates.txt'
+    opt['batchsize'] = 256
+    opt['datatype'] = 'retrieval'
+    opt['world_logs'] = parlai_data_path + split[0] + '/retrieval_report.json'
+    opt['report_filename'] = parlai_data_path + split[0] + '/retrieval_report.json'
+    opt['log_keep_fields'] = 'all'
+    opt['num_examples'] = -1
+    opt['display_examples'] = False
+    opt['save_format'] = 'conversations'
+
+    eval_list = []
+    for query in seed_queries:
+        input_dict = {'text': query}
+        eval_list.append(input_dict)
+
+    with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:
+        json.dump(eval_list, json_file)
+    print("Saved queries to", parlai_data_path + split[0] + '/retrieval.json')
+
+    eval_model(opt)
+
+    # Random Retrieval
+    doc_ids = list(range(len(contextual_docs)))
+    retrieved_doc_idx = random.choices(doc_ids, k=len(seed_queries))
 
     # TODO Manual Retrieval (e.g. BST -> 이 경우 context가 좀 더 단순해져야 한다. 현재 leading/following 불필요)
 
@@ -330,19 +370,17 @@ def _build_contextual_document(opt, subtaskpaths):
                 leading_contexts = leading_context_dic[target]
                 following_contexts = following_context_dic[target]
                 # Retrieve contextual document from different task
+                leading_doc_ids = _retrieve_contextual_document(leading_seeds, subtaskpaths, target)
+                following_doc_ids = _retrieve_contextual_document(following_seeds, subtaskpaths, target)
  
                 # Align the seed with all the other subtask's context
                 if target == 'convai2':
-                    leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts)
-                    following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts)
                     lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # no dependency leader-follower
                     fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
                 elif target == 'wizard_of_wikipedia':
-                    following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts)
                     lcm[i][j] = [leading_contexts[i] for i in following_doc_ids] # follower (wizard) based
                     fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
                 elif target == 'empatheticdialogues':
-                    leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts)
                     lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # leader (situation) based
                     fcm[i][j] = [following_contexts[i] for i in leading_doc_ids]
     

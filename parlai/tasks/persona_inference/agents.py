@@ -27,3 +27,6 @@ class PersonaInferenceTeacher(DialogTeacher):
 
 class DefaultTeacher(PersonaInferenceTeacher):
     pass
+
+class RetrievalTeacher(PersonaInferenceTeacher):
+    pass

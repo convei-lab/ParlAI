@@ -22,8 +22,14 @@ class TopicInferenceTeacher(DialogTeacher):
             self.topic_inference = json.load(data_file)
         for dialog in self.topic_inference:
             text = dialog['text']
-            labels = dialog['labels']
-            yield {"text": text, "labels": labels}, True
+            if 'labels' in dialog.keys():
+                labels = dialog['labels']
+                yield {"text": text, "labels": labels}, True
+            else:
+                yield {"text": text}, True
 
 class DefaultTeacher(TopicInferenceTeacher):
+    pass
+
+class RetrievalTeacher(TopicInferenceTeacher):
     pass
