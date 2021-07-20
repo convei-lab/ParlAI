@@ -22,8 +22,12 @@ class PersonaInferenceTeacher(DialogTeacher):
             self.persona_inference = json.load(data_file)
         for dialog in self.persona_inference:
             text = dialog['text']
-            labels = dialog['labels']
-            yield {"text": text, "labels": labels}, True
+            if 'labels' in dialog.keys():
+                labels = dialog['labels']
+                yield {"text": text, "labels": labels}, True
+            else:
+                yield {"text": text}, True
+
 
 class DefaultTeacher(PersonaInferenceTeacher):
     pass
