@@ -8,9 +8,9 @@ from parlai.core.opt import Opt
 import json
 import random
 
-from parlai.tasks.blended_skill_talk.agents import raw_data_path, safe_personas_path
+from parlai.tasks.pbst.agents import raw_data_path
 from parlai.tasks.interactive.worlds import InteractiveWorld as InteractiveBaseWorld
-from parlai.tasks.self_chat.worlds import SelfChatWorld as SelfChatBaseWorld
+from parlai.tasks.self_mix.worlds import SelfMixWorld as SelfMixBaseWorld
 from parlai.utils.io import PathManager
 
 
@@ -21,54 +21,35 @@ def get_contexts_data(opt, shared=None):
 
 
 def _load_personas(opt):
-    print('[ loading personas.. ]')
-    if opt.get('include_personas', True):
-        print(
-            "\n  [NOTE: In the BST paper both partners have a persona.\n"
-            + '         You can choose to ignore yours, the model never sees it.\n'
-            + '         In the Blender paper, this was not used for humans.\n'
-            + '         You can also turn personas off with --include-personas False]\n'
-        )
+    print('[ loading contexts.. ]')
     fname = raw_data_path(opt)
-    with PathManager.open(fname) as json_file:
-        data = json.load(json_file)
-    if opt.get('include_personas', True) and opt.get('safe_personas_only', True):
-        # Filter out unsafe personas
-        save_personas_path = safe_personas_path(opt)
-        with PathManager.open(save_personas_path, 'r') as f:
-            raw_safe_persona_groups = [line.strip() for line in f.readlines()]
-        safe_persona_strings = set()
-        for group in raw_safe_persona_groups:
-            safe_group = [_standardize(string) for string in group.split('|')]
-            safe_persona_strings.update(set(safe_group))
-    contexts = []
-    for d in data:
-        context1 = []
-        context2 = []
-        if opt.get('include_personas', True):
-            if opt.get('safe_personas_only', True):
-                personas_are_safe = all(
-                    _standardize(persona_string) in safe_persona_strings
-                    for persona in d['personas']
-                    for persona_string in persona
-                )
-                if not personas_are_safe:
-                    continue
-            context1.append('your persona: ' + d['personas'][0][0])
-            context1.append('your persona: ' + d['personas'][0][1])
-            context2.append('your persona: ' + d['personas'][1][0])
-            context2.append('your persona: ' + d['personas'][1][1])
-        if d['context_dataset'] == 'wizard_of_wikipedia':
-            context1.append(d['additional_context'])
-            context2.append(d['additional_context'])
-        if opt.get('include_initial_utterances', True):
-            context1.append(d['free_turker_utterance'])
-            context2.append(d['free_turker_utterance'])
-            context1.append(d['guided_turker_utterance'])
-            context2.append(d['guided_turker_utterance'])
-        c1 = '\n'.join(context1)
-        c2 = '\n'.join(context2)
-        contexts.append([c1, c2])
+
+    data = []
+    # with PathManager.open(fname) as jsonl_file:
+    with open(fname) as jsonl_file:
+        for line in jsonl_file:
+            sample = json.loads(line)
+            data.append(sample)
+
+    subtasks = opt['subtasks']
+
+    contexts = []    
+    for episode in data:
+
+        task_contexts = []
+        for subtask in subtasks:
+            leader_context = []
+            follower_context = []
+
+            leader_context.append(episode['leader']['context'][subtask])
+            follower_context.append(episode['follower']['context'][subtask])
+            
+            leader_context = '\n'.join(leader_context)
+            follower_context = '\n'.join(follower_context)
+            task_contexts.append([leader_context, follower_context])
+
+        contexts.append(task_contexts)
+
     return contexts
 
 
@@ -98,7 +79,7 @@ def _standardize(orig: str) -> str:
         new = new.replace(i, j)
     return new
 
-
+# TODO 이 클래스는 안 불러지긴 하는데 재밌게 활용할 수 있을 것 같다.
 class InteractiveWorld(InteractiveBaseWorld):
     @classmethod
     def add_cmdline_args(
@@ -146,7 +127,6 @@ class InteractiveWorld(InteractiveBaseWorld):
         return p[0], p[1]
 
     def finalize_episode(self):
-        print("\nCHAT DONE.\n")
         if self.display_partner_persona:
             partner_persona = self.p2.replace('your persona:', 'partner\'s persona:')
             print(f"Your partner was playing the following persona:\n{partner_persona}")
@@ -159,13 +139,13 @@ class InteractiveWorld(InteractiveBaseWorld):
         return shared_data
 
 
-class SelfChatWorld(SelfChatBaseWorld):
+class SelfMixWorld(SelfMixBaseWorld):
     @classmethod
     def add_cmdline_args(
         cls, parser: ParlaiParser, partial_opt: Optional[Opt] = None
     ) -> ParlaiParser:
         super().add_cmdline_args(parser, partial_opt)
-        parser = parser.add_argument_group('BST SelfChat World')
+        parser = parser.add_argument_group('PBST SelfMix World')
         parser.add_argument(
             '--include-personas',
             type='bool',
@@ -183,10 +163,11 @@ class SelfChatWorld(SelfChatBaseWorld):
     def init_contexts(self, shared=None):
         self.contexts_data = get_contexts_data(self.opt, shared=shared)
 
-    def get_contexts(self):
-        random.seed()
-        p = random.choice(self.contexts_data)
-        return [p[0], p[1]]
+    def get_contexts(self, episode_cnt):
+        # random.seed()
+        # contexts = random.choice(self.contexts_data)
+        contexts = self.contexts_data[episode_cnt]
+        return contexts
 
     def share(self):
         shared_data = super().share()

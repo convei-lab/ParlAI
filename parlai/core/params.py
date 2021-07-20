@@ -866,13 +866,14 @@ class ParlaiParser(argparse.ArgumentParser):
         task: str,
         interactive_task: Optional[str],
         selfchat_task: Optional[str],
+        selfmix_task: Optional[str],
         partial: Opt,
     ):
         """
         Add arguments specific to the world.
         """
         world_class = load_world_module(
-            task, interactive_task=interactive_task, selfchat_task=selfchat_task
+            task, interactive_task=interactive_task, selfchat_task=selfchat_task, selfmix_task=selfmix_task
         )
         if world_class is not None and hasattr(world_class, 'add_cmdline_args'):
             try:
@@ -953,6 +954,7 @@ class ParlaiParser(argparse.ArgumentParser):
                 task,
                 parsed.get('interactive_task', False),
                 parsed.get('selfchat_task', False),
+                parsed.get('selfmix_task', False),
                 partial,
             )
 

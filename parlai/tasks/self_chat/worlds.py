@@ -119,6 +119,8 @@ class SelfChatWorld(DialogPartnerWorld):
             return {'text': utterance, 'episode_done': False, 'id': agent.id}
 
         openers = self.get_openers(episode_num)
+        # print('openers', openers)
+        # input()
         if not openers:
             return []
         return list(map(make_agent_action, openers, agents))
@@ -141,7 +143,7 @@ class SelfChatWorld(DialogPartnerWorld):
             self.seed_utterances = self._get_seed_utt_acts(
                 self.episode_cnt, self.agents
             )
-
+            print(self.seed_utterances)
         if self.contexts:
             assert len(self.contexts) == 2
             # initial context
@@ -156,7 +158,11 @@ class SelfChatWorld(DialogPartnerWorld):
         elif self.seed_utterances:
             # pop the next two seed messages (there may be less or more than 2 total)
             utts = self.seed_utterances[:2]
+            print('utt', utts)
+            input()
             self.seed_utterances = self.seed_utterances[2:]
+            print('remaining seed', self.seed_utterances)
+            input()
             # process the turn
             for i in [0, 1]:
                 # if we have a seed utterance, add it to the conversation

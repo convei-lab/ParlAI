@@ -40,17 +40,16 @@ RESOURCES = {
     )
 }
 
-SPLIT_RATIO = OrderedDict({'train': 0.6, 'val': 0.3, 'test': 0.1})
+SPLIT_RATIO = OrderedDict({'train': 0.6, 'valid': 0.3, 'test': 0.1})
 
 def build(opt):
     version = 'v0.0'
     dpath = os.path.join(opt['datapath'], 'pbst')
-    opt['subtasks'], opt['subtaskpaths'] = [], []
+    subtaskpaths = []
 
-    for subtask in RESOURCES.keys():
+    for subtask in opt['subtasks']:
         subtaskpath = os.path.join(dpath, subtask)
-        opt['subtasks'].append(subtask)
-        opt['subtaskpaths'].append(subtaskpath)
+        subtaskpaths.append(subtaskpath)
 
     if not build_data.built(dpath, version):
         logging.info('building data: ' + dpath)
@@ -60,26 +59,27 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], opt['subtaskpaths']):
+        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
         #     build_data.make_dir(subtaskpath)
         #     downloadable_file = RESOURCES[subtask]
         #     downloadable_file.download_file(subtaskpath) # TODO ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.
 
-        context = _build_contextual_document(opt)
-        blended_context_path = os.path.join(opt['datapath'], 'pbst', 'blended_context.jsonl')
+        context = _build_contextual_document(opt, subtaskpaths)
+        blended_context_path = os.path.join(dpath, 'blended_context.jsonl')
         with open(blended_context_path, 'w') as fout:
-            # json.dump(context_dic, fout)
+            # json.dump(context, fout)
             for dic in context:
                 json.dump(dic, fout) 
                 fout.write("\n")
 
-        context_splits = _split(context, opt, SPLIT_RATIO, randomized=True)
+        context_splits = _split(context, dpath, SPLIT_RATIO, randomized=True)
         
-        input('dont mark done man')
-        _create_parlai_format(dpath)
-        build_data.mark_done(dpath, version)
+
+        _create_parlai_format(dpath, opt)
 
         # Mark the data as built.
+        build_data.mark_done(dpath, version)
+
 
 
 def _convai_parser(filepath
@@ -184,9 +184,9 @@ def _wizard_of_wikipedia_parser(filepath
     assert  len(topic_list) == len(passage_list) == len(seed_list) == len(persona_list)
 
     for topic, passage, persona in zip(topic_list, passage_list, persona_list):
-        # TODO Persona가 ConvAI에도 있고 Wow에도 있는데 괜찮을까?
-        leading_contexts.append(f'Topic: {topic}\nPersona: {persona}') 
-        following_contexts.append(f'Topic: {topic}\nPassage: {passage}')
+        # leading_contexts.append(f'Topic: {topic}\nPersona: {persona}') # Persona 떼어냈다.
+        leading_contexts.append(f'topic: {topic}') 
+        following_contexts.append(f'topic: {topic}\nknowledge: {passage}')
     
     
     assert len(leading_contexts) == len(following_contexts) == len(seed_list)
@@ -232,7 +232,7 @@ def _empatheticdialogues_parser(filepath
 
     # TODO Added extra information of emotion labels to the leader. Is this fair enough?
     for situation, emotion in zip(situation_list, emotion_list):
-        leading_contexts.append(f'Situation: {situation}\nEmotion: {emotion}')
+        leading_contexts.append(f'situation: {situation}\nemotion: {emotion}')
         following_contexts.append(f'')
     assert len(leading_contexts) == len(following_contexts) == len(seed_list)
 
@@ -250,15 +250,15 @@ def _empatheticdialogues_parser(filepath
 def parser_switch():
     parser_switch = {
         'convai2': {
-            'files': ['train_both_original_no_cands.txt', 'valid_both_original_no_cands.txt'],
+            'files': ['train_both_original_no_cands.txt'], # 'valid_both_original_no_cands.txt'
             'func': _convai_parser,
         },
         'wizard_of_wikipedia': {
-            'files': ['train.json', 'valid_random_split.json', 'test_random_split.json'],
+            'files': ['train.json', 'valid_random_split.json'], # 'test_random_split.json'
             'func': _wizard_of_wikipedia_parser,
         },
         'empatheticdialogues': {
-            'files': ['train.csv', 'valid.csv', 'test.csv'],
+            'files': ['train.csv', 'valid.csv'], # 'test.csv'
             'func': _empatheticdialogues_parser,
         }
     }
@@ -294,14 +294,21 @@ def _retrieve_contextual_document(seed_queries: List[str], contextual_docs: List
         
 
 
-def _build_contextual_document(opt):
+def _build_contextual_document(opt, subtaskpaths):
     # contexts are different: for leading speaker and following speaker 
     subtasks, nsubtasks = opt['subtasks'], len(opt['subtasks'])
     leading_context_dic, following_context_dic, seed_dic = {}, {}, {} # seed pairs are concatenated into a sentence
     
     # Collect task-wise contexts and seeds
-    for subtask, subtaskpath in zip(subtasks, opt['subtaskpaths']):
+    for subtask, subtaskpath in zip(subtasks, subtaskpaths):
         leading_contexts, following_contexts, seeds = _parse_task_dataset(subtask, subtaskpath)
+        lc = os.path.join(opt['datapath'], 'pbst', f'leading_{subtask}_kb.json')
+        fc = os.path.join(opt['datapath'], 'pbst', f'following_{subtask}_kb.json')
+        su = os.path.join(opt['datapath'], 'pbst', f'seed_utterance_pairs_{subtask}.json')
+        with open(lc, 'w') as outputfile1, open(fc, 'w') as outputfile2, open(su, 'w') as outputfile3:
+            json.dump(leading_contexts, outputfile1)
+            json.dump(following_contexts, outputfile2)
+            json.dump(seeds, outputfile3)
         assert len(leading_contexts) == len(following_contexts) == len(seeds)
         leading_context_dic[subtask] = leading_contexts
         following_context_dic[subtask] = following_contexts
@@ -389,7 +396,7 @@ def _build_contextual_document(opt):
  
     return context
 
-def _split(json_list, opt, split_ratio: OrderedDict, randomized=True):
+def _split(json_list, dpath, split_ratio: OrderedDict, randomized=True):
     # sr = split_ratio = OrderedDict({'train': 0.6, 'val': 0.3, 'test': 0.1})
 
     # filepath = '/home/theorist/data3/ParlAI/data/pbst/pbst.jsonl'
@@ -428,8 +435,8 @@ def _split(json_list, opt, split_ratio: OrderedDict, randomized=True):
     assert sum(split_lengths) == original_length, "Some samples in datset is remained after split"
 
     for split_name, dataset in sd.items():
-        bc = os.path.join(opt['datapath'], 'blended_context_'+split_name+'.jsonl', 'w')
-        pbc = os.path.join(opt['datapath'], 'pretty_blended_context_'+split_name+'.jsonl', 'w')
+        bc = os.path.join(dpath, f'blended_context_{split_name}.jsonl')
+        pbc = os.path.join(dpath, f'pretty_blended_context_{split_name}.jsonl')
         with open(bc, 'w') as outputfile, open(pbc, 'w') as prettyfile:
             for sample in dataset:
                 assert isinstance(sample, Dict)
@@ -440,35 +447,71 @@ def _split(json_list, opt, split_ratio: OrderedDict, randomized=True):
     return split_data
 
 
-def _create_parlai_format(dpath: str):
+def _create_parlai_format(dpath: str, opt: List):
     """
     Copy data into the format read by ParlAIDialogTeacher.
 
     'text' will be from the free Turker, who speaks first, and 'label' will be from the
     guided Turker.
     """
-    input()
     datatypes = ['train', 'valid', 'test']
     for datatype in datatypes:
 
-        load_path = os.path.join(dpath, f'{datatype}.json')
-        save_path = os.path.join(dpath, f'{datatype}.txt')
+        load_path = os.path.join(dpath, f'blended_context_{datatype}.jsonl')
+        save_path = os.path.join(dpath, f'blended_context_{datatype}.txt')
 
         print(f'Loading {load_path}.')
+        # with PathManager.open(load_path, 'r', encoding='utf8') as f_read:
+        #     data = json.load(f_read)
+        data = []
         with PathManager.open(load_path, 'r', encoding='utf8') as f_read:
-            data = json.load(f_read)
+            for line in f_read:
+                data.append(json.loads(line))
 
         print(f'Saving to {save_path}')
+        subtasks = opt['subtasks']
         with PathManager.open(save_path, 'w', encoding='utf8') as f_write:
             for episode in data:
-                assert (
-                    len(episode['dialog'])
-                    == len(episode['suggestions'])
-                    == len(episode['chosen_suggestions'])
-                )
-                num_entries = len(episode['dialog']) // 2
+                num_entries = 1
+                entry_idx = 0
                 for entry_idx in range(num_entries):
                     line = _get_line(
-                        episode=episode, num_entries=num_entries, entry_idx=entry_idx
+                        episode, num_entries, entry_idx, subtasks
                     )
                     f_write.write(f'{line} \n')
+
+
+def _get_line(episode: dict, num_entries: int, entry_idx: int, subtasks: List) -> str:
+    """
+    Return the line to print in the reformatted file.
+    """
+    episode_done = entry_idx == num_entries - 1
+
+    if entry_idx == 0:
+        leader_context = '\n'.join([f"{episode['leader']['context'][task]}" for task in subtasks])
+        follower_context = '\n'.join([f"{episode['follower']['context'][task]}" for task in subtasks])
+        context_dataset = f"context dataset: {episode['source_task']}"
+        original_context = '\n'.join([leader_context, follower_context, context_dataset]) + '\n'
+
+    else:
+        original_context = ''
+    input_utterance = episode['leader']['seed']
+    model_label = episode['follower']['seed']
+
+    # Compile into text string
+    parts = {
+        'text': input_utterance,
+        'labels': model_label,
+    }
+    assert all([isinstance(part, str) for part in parts.values()])
+    line = '\t'.join([f'{key}:{_escape(value)}' for key, value in parts.items()])
+
+    # Add episode_done
+    if episode_done:
+        line += '\tepisode_done:True'
+
+    return line
+
+
+def _escape(value: str) -> str:
+    return value.replace('\t', '\\t').replace('\n', '\\n').replace('|', '__PIPE__')

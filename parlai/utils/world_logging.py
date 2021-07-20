@@ -8,6 +8,7 @@
 Useful utilities for logging actions/observations in a world.
 """
 
+from random import random
 from typing import Optional
 from parlai.core.params import ParlaiParser
 from parlai.core.opt import Opt
@@ -180,3 +181,106 @@ class WorldLogger:
 
     def get_logs(self):
         return self._logs
+
+
+class DebateLogger(WorldLogger):
+
+    def _add_msgs(self, acts, idx=0):
+        """
+        Add messages from a `parley()` to the current episode of logs.
+
+        :param acts: list of acts from a `.parley()` call
+        """
+        msgs = []
+        for act_pair in acts:
+            msg_pair = []
+            for act in act_pair:
+                # padding examples in the episode[0]
+                if not isinstance(act, Message):
+                    act = Message(act)
+                if act.is_padding():
+                    break
+                if not self.keep_all:
+                    msg = {f: act[f] for f in self.keep_fields if f in act}
+                else:
+                    msg = act
+                msg_pair.append(msg)
+            msgs.append(msg_pair)
+
+        if len(msgs) == 0:
+            return
+        self._current_episodes.setdefault(idx, [])
+        self._current_episodes[idx].append(msgs)
+
+    def convert_to_labeled_data(self, episode, subtasks):
+        out = []
+        text_lst = []
+
+        opposite_context = []
+        dynamic_context = []
+        seeded = False
+        
+        ntasks = len(subtasks)
+        assert len(episode) % ntasks == 0
+        # team_debate = [episode[i:i+ntasks] for i in range(0, len(episode), 3)]
+
+        for i, expertise in enumerate(episode):
+            for j, (task, parley) in enumerate(zip(subtasks, expertise)):
+                first_act, second_act = parley
+                if first_act['id'] == 'context' and second_act['id'] == 'context':
+                    text_lst.append(second_act['text'])
+                    opposite_context.append(first_act['text'])
+                elif not seeded and first_act['id'] == 'seed' and second_act['id'] == 'seed':
+                        text_lst.append(first_act['text'])
+                        seeded = True
+                elif 'text' in first_act:
+                    text_lst.append(first_act['text'])
+                if not second_act.get('id') in ['context', 'seed']:
+                    label = second_act.get('text')
+                    line = {
+                            'id': first_act.get('id', ''),
+                            'text': '\n'.join(text_lst),
+                            'labels': [label],
+                            'episode_done': False,
+                        }
+                    
+                    if opposite_context:
+                        line['opposite_context'] = opposite_context
+                        opposite_context = []
+                    out.append(line)
+                    print('*line*', line)
+                    text_lst = []
+                    seeded = False
+                print(first_act)
+                print(second_act)
+                # print(out)
+                input()
+        if len(out) > 0:
+            out[-1]['episode_done'] = True
+        return out
+
+    def write(self, outfile, world, subtasks, file_format='conversations', indent=4):
+        if file_format == 'conversations':
+            self.write_conversations_format(outfile, world)
+        else:
+            # ParlAI text format
+            self.write_parlai_format(outfile, subtasks)
+
+    def write_parlai_format(self, outfile, subtasks):
+        logging.info(f'Saving log to {outfile} in ParlAI format')
+        with PathManager.open(outfile, 'w') as fw:
+            for episode in tqdm(self._logs):
+                ep = self.convert_to_labeled_data(episode, subtasks)
+                for act in ep:
+                    txt = msg_to_str(act)
+                    fw.write(txt + '\n')
+                fw.write('\n')
+
+    def write_conversations_format(self, outfile, world):
+        logging.info(f'Saving log to {outfile} in Conversations format')
+        Conversations.save_conversations(
+            self._logs,
+            outfile,
+            world.opt,
+            self_chat=world.opt.get('selfchat_task', False),
+        )
