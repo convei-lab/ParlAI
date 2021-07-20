@@ -1429,4 +1429,15 @@ task_list = [
             "website": "https://www.microsoft.com/en-us/research/project/metalwoz/",
         },
     },
+    {
+        "id": "persona_inference",
+        "display_name": "persona_inference-Chat",
+        "task": "persona_inference",
+        "tags": ["ChitChat"],
+        "description": (
+            "A chit-chat dataset where paired Turkers are given assigned "
+            "personas and chat to try to get to know each other."
+        ),
+        "links": {"arXiv": "https://arxiv.org/abs/1801.07243"},
+    },
 ]

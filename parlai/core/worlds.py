@@ -355,6 +355,12 @@ class DialogPartnerWorld(World):
 
         Alternate between the two agents.
         """
+
+        # EDITED BY MINJU
+        # from icecream import ic
+        # ic(self) # self: <parlai.core.worlds.DialogPartnerWorld object at 0x7f9d8009d860>
+        # ic(self.acts)
+
         acts = self.acts
         agents = self.agents
         acts[0] = agents[0].act()

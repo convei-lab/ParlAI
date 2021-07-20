@@ -279,11 +279,11 @@ def _parse_task_dataset(subtask, subtaskpath
         seeds.extend(fseeds)
     return leading_contextss, following_contextss, seeds
 
-def _retrieve_contextual_document(seed_queries, contextual_docs):
-    
-    # Random Retrieval
-    doc_ids = list(range(len(contextual_docs)))
-    retrieved_doc_idx = random.choices(doc_ids, k=len(seed_queries))
+def _retrieve_contextual_document(seed_queries: List[str], contextual_docs: List[str]
+    )-> List[int]: 
+    '''
+        assert len(seed_queries) == len(retrieved_doc_idx)
+    '''
 
     # TODO Manual Retrieval (e.g. BST -> 이 경우 context가 좀 더 단순해져야 한다. 현재 leading/following 불필요)
 
@@ -323,17 +323,19 @@ def _build_contextual_document(opt):
                 leading_contexts = leading_context_dic[target]
                 following_contexts = following_context_dic[target]
                 # Retrieve contextual document from different task
-                leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts)
-                following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts)
  
                 # Align the seed with all the other subtask's context
                 if target == 'convai2':
+                    leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts)
+                    following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts)
                     lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # no dependency leader-follower
                     fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
                 elif target == 'wizard_of_wikipedia':
+                    following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts)
                     lcm[i][j] = [leading_contexts[i] for i in following_doc_ids] # follower (wizard) based
                     fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
                 elif target == 'empatheticdialogues':
+                    leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts)
                     lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # leader (situation) based
                     fcm[i][j] = [following_contexts[i] for i in leading_doc_ids]
     

@@ -277,7 +277,7 @@ class TorchRankerAgent(TorchAgent):
         `set_interactive_mode` function.
         """
         # candidate variables
-        self.candidates = opt['candidates']
+        self.candidates = opt['candidates'] # inline
         self.eval_candidates = opt['eval_candidates']
         # options
         self.fixed_candidates_path = opt['fixed_candidates_path']
@@ -320,6 +320,11 @@ class TorchRankerAgent(TorchAgent):
 
     def get_task_candidates_path(self):
         path = self.opt['model_file'] + '.cands-' + self.opt['task'] + '.cands'
+
+        # EDITED BY MINJU
+        # from icecream import ic
+        # ic(path)
+
         if PathManager.exists(path) and self.opt['fixed_candidate_vecs'] == 'reuse':
             return path
         logging.warning(f'Building candidates file as they do not exist: {path}')
@@ -501,6 +506,11 @@ class TorchRankerAgent(TorchAgent):
             else batch.image.size(0)
         )
         self.model.eval()
+
+        # # EDITED BY MINJU
+        # from icecream import ic
+        # ic(self.eval_candidates)
+        # ic(batch) # batch 안에 candidate_vecs가 있음 이걸 어디서 만드는지 찾아야함
 
         cands, cand_vecs, label_inds = self._build_candidates(
             batch, source=self.eval_candidates, mode='eval'
@@ -900,6 +910,12 @@ class TorchRankerAgent(TorchAgent):
         overwrite the vectorize_fixed_candidates() method to produce encoded vectors
         instead of just vectorized ones.
         """
+
+        # # EDITED BY MINJU
+        # from icecream import ic
+        # ic(self.candidates)
+        # ic(self.eval_candidates)
+
         if shared:
             self.fixed_candidates = shared['fixed_candidates']
             self.fixed_candidate_vecs = shared['fixed_candidate_vecs']
