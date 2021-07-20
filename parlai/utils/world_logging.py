@@ -352,7 +352,7 @@ class DebateLogger(WorldLogger):
     def write_parlai_format(self, outfile, subtasks):
         logging.info(f'Saving log to {outfile} in ParlAI format')
         ana_path = './data/pbst/machine_analysis.txt'
-        with PathManager.open(outfile, 'w') as fw, PathManager.open(ana_path, 'w') as afw:
+        with PathManager.open(outfile, 'w+') as fw, PathManager.open(ana_path, 'w+') as afw:
             for episode in tqdm(self._logs):
                 ep = self.convert_to_labeled_data(episode, subtasks)
                 for act in ep:
