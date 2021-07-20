@@ -168,7 +168,6 @@ def self_mix(opt):
     for i in range(opt['num_self_mixs']):
         _run_self_mix_episode(opt, world, logger)
         report = world.report()
-        print(world)
         text, report = log_time.log(i + 1, opt['num_self_mixs'], report)
         logging.info(text)
 

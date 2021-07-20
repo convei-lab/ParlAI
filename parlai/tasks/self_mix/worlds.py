@@ -243,32 +243,39 @@ class SelfMixWorld(TeamDebateWorld):
             for i in range(len(self.agents)):
                 acts[i][0] = agents[i][0].act()
                 response_candidates.append(acts[i][0]['beam_texts'])
-            virdicts = filter_out(response_candidates, self.documents)
-            decision = decide_action(response_candidates, virdicts)
-            # for i in range(len(self.agents)): # TODO add suggestions!
-            #     acts[decision][0][f'claims{i}'] = acts[i][0]['text']
-            
-            # followers observe
+
+            # Leaders debate
+            verdict = filter_out(response_candidates, self.documents)
+            decision = decide_action(response_candidates, verdict)
+            for i in range(len(self.agents)):
+                acts[i][0].force_set('decision', '0')
+                acts[i][0].force_set('verdict', ','.join([str(int(v)) for v in verdict[i]]))
+            acts[decision][0].force_set('decision', '1')
+
+            # Followers observe
             for i in range(len(self.agents)):
                 agents[i][1].observe(validate(acts[decision][0]))
-                # agents[i][1].observe(validate(acts[i][0])) # TODO save this as additional suggestions
             
             if debug: 
                 for i in range(len(self.agents)):
                     for j in [0]:
                         print(f'self.acts[{i}][{j}]', self.acts[i][j])
-                print(f'decision: {decision}', acts[decision][0])
+                print(f'Decision: {decision}', acts[decision][0])
                 input('Leaders actioned & followers observed\n')
                 
-            #Followers action
+            # Followers action
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][1] = agents[i][1].act()
                 response_candidates.append(acts[i][1]['beam_texts'])
-            virdicts = filter_out(response_candidates, self.documents)
-            decision = decide_action(response_candidates, virdicts)
-            # for i in range(len(self.agents)):
-            #     acts[decision][0][f'claims{i}'] = acts[i][0]['text']
+
+            # Followers debate
+            verdict = filter_out(response_candidates, self.documents)
+            decision = decide_action(response_candidates, verdict)
+            for i in range(len(self.agents)):
+                acts[i][1].force_set('decision', '0')
+                acts[i][1].force_set('verdict', ','.join([str(int(v)) for v in verdict[i]]))
+            acts[decision][1].force_set('decision', '1')
 
             # leaders observe
             for i in range(len(self.agents)):
@@ -279,7 +286,7 @@ class SelfMixWorld(TeamDebateWorld):
                 for i in range(len(self.agents)):
                     for j in [1]:
                         print(f'self.acts[{i}][{j}]', self.acts[i][j])
-                print(f'decision: {decision}', acts[decision][1])
+                print(f'Decision: {decision}', acts[decision][1])
                 input('Followers actioned & leaders observed\n')
         self.update_counters()
         self.turn_cnt += 1
