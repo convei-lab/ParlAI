@@ -58,11 +58,11 @@ def build(opt):
             build_data.remove_dir(dpath)
         build_data.make_dir(dpath)
 
-        # # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-        #     build_data.make_dir(subtaskpath)
-        #     downloadable_file = RESOURCES[subtask]
-        #     downloadable_file.download_file(subtaskpath) 
+        # Download the data.
+        for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+            build_data.make_dir(subtaskpath)
+            downloadable_file = RESOURCES[subtask]
+            downloadable_file.download_file(subtaskpath) 
 
         if 'empatheticdialogues' in opt['subtasks']:
             # Move empatheticdialogues to parent directory
