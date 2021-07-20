@@ -213,48 +213,131 @@ class DebateLogger(WorldLogger):
         self._current_episodes[idx].append(msgs)
 
     def convert_to_labeled_data(self, episode, subtasks):
+        """
+        Write one episode into series of parl-ai format lines
+        """
+        debug = False
         out = []
-        text_lst = []
-
-        opposite_context = []
-        dynamic_context = []
-        seeded = False
         
+        # dialogue initiation
+        partner_context = []
+        subtask_context = {}
+        seeded = False
         ntasks = len(subtasks)
         assert len(episode) % ntasks == 0
-        # team_debate = [episode[i:i+ntasks] for i in range(0, len(episode), 3)]
-
+        
         for i, expertise in enumerate(episode):
-            for j, (task, parley) in enumerate(zip(subtasks, expertise)):
+            line = {'id': '', 'text': '', 'labels': '', 'episode_done': False,}
+            text_lst = []
+
+            for j, (subtask, parley) in enumerate(zip(subtasks, expertise)):
                 first_act, second_act = parley
-                if first_act['id'] == 'context' and second_act['id'] == 'context':
+                if first_act['id'] == 'context' and second_act['id'] == 'context': # context
                     text_lst.append(second_act['text'])
-                    opposite_context.append(first_act['text'])
-                elif not seeded and first_act['id'] == 'seed' and second_act['id'] == 'seed':
+                    partner_context.append(first_act['text'])
+                    subtask_context[f'context1_{subtask}'] = first_act['text']
+                    subtask_context[f'context2_{subtask}'] = second_act['text']
+                elif first_act['id'] == 'seed' and second_act['id'] == 'seed': # seed
+                    if not seeded: # Writing first seed
                         text_lst.append(first_act['text'])
+
+                        line['id'] = 'context'
+                        line['text'] = '\n'.join(text_lst)
+                        line['labels'] = [second_act['text']]
+                        line['partner_context'] = '\n'.join(partner_context) if partner_context else ''
+                        for k, v in subtask_context.items(): line[k] = v
+                        out.append(line)
+                        if debug: print('*line*', line, '\n'); input()
+                        text_lst = []
                         seeded = True
-                elif 'text' in first_act:
-                    text_lst.append(first_act['text'])
-                if not second_act.get('id') in ['context', 'seed']:
-                    label = second_act.get('text')
-                    line = {
-                            'id': first_act.get('id', ''),
-                            'text': '\n'.join(text_lst),
-                            'labels': [label],
-                            'episode_done': False,
-                        }
-                    
-                    if opposite_context:
-                        line['opposite_context'] = opposite_context
-                        opposite_context = []
-                    out.append(line)
-                    print('*line*', line)
-                    text_lst = []
-                    seeded = False
-                print(first_act)
-                print(second_act)
-                # print(out)
-                input()
+                else: # utterance
+                    if first_act['decision'] == '1':
+                        line['id'] = first_act['id']
+                        text_lst.append(first_act['text'])
+                        line['context1_dataset'] = subtasks[j]
+                    if second_act['decision'] == '1':
+                        line['labels'] = [second_act['text']]
+                        line['context2_dataset'] = subtasks[j]
+                    first_verdict = first_act['verdict'].split(',')
+                    second_verdict = second_act['verdict'].split(',')
+                    suggestions1 = [[t, str(round(v, 2))] for t, v in first_act['beam_texts']]
+                    suggestions2 = [[t, str(round(v, 2))] for t, v in second_act['beam_texts']]
+                    for k in range(len(first_verdict)):
+                        line[f'suggestion1_{subtask}_{k}'] = ' '.join(suggestions1[k]) + f' (verdict: {first_verdict[k]})'
+                        line[f'suggestion2_{subtask}_{k}'] = ' '.join(suggestions2[k]) + f' (verdict: {second_verdict[k]})' 
+                if debug: print(first_act); print(second_act); input()
+            # In case of utterances, we collect the best while iteration.
+            if second_act['id'] != 'context' and second_act['id'] != 'seed':
+                line['text'] = '\n'.join(text_lst)
+                out.append(line)
+                if debug: print('*line*', line, '\n'); input()
+                text_lst = []
+                # TODO add random sampling for response candidates
+        if len(out) > 0:
+            out[-1]['episode_done'] = True
+        return out
+
+    def convert_to_labeled_data2(self, episode, subtasks):
+        """
+        Write one episode into series of parl-ai format lines
+        """
+        debug = False
+        out = []
+        
+        # dialogue initiation
+        partner_context = []
+        subtask_context = {}
+        seeded = False
+        ntasks = len(subtasks)
+        assert len(episode) % ntasks == 0
+        
+        for i, expertise in enumerate(episode):
+            line = {'id': '', 'text': '', 'labels': '', 'episode_done': False,}
+            text_lst = [] # TODO this needs to go away
+
+            for j, (subtask, parley) in enumerate(zip(subtasks, expertise)):
+                first_act, second_act = parley
+                if first_act['id'] == 'context' and second_act['id'] == 'context': # context
+                    text_lst.append(second_act['text'])
+                    partner_context.append(first_act['text'])
+                    subtask_context[f'context1_{subtask}'] = first_act['text']
+                    subtask_context[f'context2_{subtask}'] = second_act['text']
+                elif first_act['id'] == 'seed' and second_act['id'] == 'seed': # seed
+                    if not seeded: # Writing first seed
+                        text_lst.append(first_act['text'])
+
+                        line['id'] = 'context'
+                        line['text'] = '\n'.join(text_lst)
+                        line['labels'] = [second_act['text']]
+                        line['partner_context'] = '\n'.join(partner_context) if partner_context else ''
+                        for k, v in subtask_context.items(): line[k] = v
+                        out.append(line)
+                        if debug: print('*line*', line, '\n'); input()
+                        text_lst = []
+                        seeded = True
+                else: # utterance
+                    if first_act['decision'] == '1':
+                        line['id'] = first_act['id']
+                        text_lst.append(first_act['text'])
+                        line['context1_dataset'] = subtasks[j]
+                    if second_act['decision'] == '1':
+                        line['labels'] = [second_act['text']]
+                        line['context2_dataset'] = subtasks[j]
+                    first_verdict = first_act['verdict'].split(',')
+                    second_verdict = second_act['verdict'].split(',')
+                    suggestions1 = [[t, str(round(v, 2))] for t, v in first_act['beam_texts']]
+                    suggestions2 = [[t, str(round(v, 2))] for t, v in second_act['beam_texts']]
+                    for k in range(len(first_verdict)):
+                        line[f'suggestion1_{subtask}_{k}'] = ' '.join(suggestions1[k]) + f' (verdict: {first_verdict[k]})'
+                        line[f'suggestion2_{subtask}_{k}'] = ' '.join(suggestions2[k]) + f' (verdict: {second_verdict[k]})' 
+                if debug: print(first_act); print(second_act); input()
+            # In case of utterances, we collect the best while iteration.
+            if second_act['id'] != 'context' and second_act['id'] != 'seed':
+                line['text'] = '\n'.join(text_lst)
+                out.append(line)
+                if debug: print('*line*', line, '\n'); input()
+                text_lst = []
+                # TODO add random sampling for response candidates
         if len(out) > 0:
             out[-1]['episode_done'] = True
         return out
@@ -268,13 +351,23 @@ class DebateLogger(WorldLogger):
 
     def write_parlai_format(self, outfile, subtasks):
         logging.info(f'Saving log to {outfile} in ParlAI format')
-        with PathManager.open(outfile, 'w') as fw:
+        ana_path = './data/pbst/machine_analysis.txt'
+        with PathManager.open(outfile, 'w') as fw, PathManager.open(ana_path, 'w') as afw:
             for episode in tqdm(self._logs):
                 ep = self.convert_to_labeled_data(episode, subtasks)
                 for act in ep:
                     txt = msg_to_str(act)
                     fw.write(txt + '\n')
                 fw.write('\n')
+
+                ep = self.convert_to_labeled_data2(episode, subtasks)
+                for act in ep:
+                    txt = msg_to_str(act)
+                    for t in txt.split('\t'):
+                        if t.startswith('id:'):
+                            afw.write('\n')
+                        afw.write('-> '+ t + '\n')
+                afw.write('\n')
 
     def write_conversations_format(self, outfile, world):
         logging.info(f'Saving log to {outfile} in Conversations format')

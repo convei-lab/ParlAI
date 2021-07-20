@@ -91,20 +91,21 @@ def _convai_parser(filepath
     with open(filepath, 'r') as file:
         lines = file.readlines()
     for i, line in enumerate(lines):
-        lines[i] = re.sub(r"^[0-9]+", "", line).strip().replace('\t', ' ')
+        lines[i] = re.sub(r"^[0-9]+", "", line).strip()
     
     # Collecting
     persona1, persona2, seed_pair = [], [], None
     episode_done = False
     for i, line in enumerate(lines):
         # print('Line', i, line) # for debug
-        if line.startswith("your persona: "):
+        if line.startswith("partner's persona: "):
             persona1.append(line)
-            episode_done = False
-        elif line.startswith("partner's persona: "):
+        elif line.startswith("your persona: "):
             persona2.append(line)
+            episode_done = False
         elif not episode_done:
-            seed_pair = [lines[i], lines[i+1]]
+            seed_pair = line.split('\t')
+            assert len(seed_pair) == 2
             leading_contexts.append('\n'.join(persona1)) 
             following_contexts.append('\n'.join(persona2))
             seed_list.append(seed_pair)
