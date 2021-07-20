@@ -371,7 +371,8 @@ def _build_contextual_document(opt, subtaskpaths):
                 episode['follower']['context'][alignedtask] = fcm[srctaskid][alignedtaskid][context_id]
 
             context.append(episode)
-            
+
+    # for git merge        
     # # for debug
     # for i, episode in enumerate(context):
     #     print('Episode', i, '*'*40)
