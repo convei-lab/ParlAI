@@ -34,7 +34,7 @@ from parlai.utils.torch import (
     PipelineHelper,
 )
 from parlai.utils.fp16 import FP16SafeCrossEntropy
-from parlai.core.metrics import AverageMetric
+from parlai.core.metrics import AverageMetric, TimerMetric
 import parlai.utils.logging as logging
 
 
@@ -506,12 +506,6 @@ class TorchRankerAgent(TorchAgent):
             else batch.image.size(0)
         )
         self.model.eval()
-
-        # # EDITED BY MINJU
-        # from icecream import ic
-        # ic(self.eval_candidates)
-        # ic(batch) # batch 안에 candidate_vecs가 있음 이걸 어디서 만드는지 찾아야함
-
         cands, cand_vecs, label_inds = self._build_candidates(
             batch, source=self.eval_candidates, mode='eval'
         )
@@ -530,6 +524,12 @@ class TorchRankerAgent(TorchAgent):
                 cand_encs = self.vocab_candidate_encs
 
         scores = self.score_candidates(batch, cand_vecs, cand_encs=cand_encs)
+
+        # # EDITED BY MINJU
+        # from icecream import ic
+        # ic(len(scores))
+        # ic(scores.size())
+
         if self.rank_top_k > 0:
             sorted_scores, ranks = scores.topk(
                 min(self.rank_top_k, scores.size(1)), 1, largest=True
