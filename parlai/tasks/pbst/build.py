@@ -62,10 +62,21 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-        #     build_data.make_dir(subtaskpath)
-        #     downloadable_file = RESOURCES[subtask]
-        #     downloadable_file.download_file(subtaskpath) # TODO ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.
+        for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+            build_data.make_dir(subtaskpath)
+            downloadable_file = RESOURCES[subtask]
+            downloadable_file.download_file(subtaskpath) 
+
+        if 'empatheticdialogues' in opt['subtasks']:
+            # Move empatheticdialogues to parent directory
+            # (ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.)
+            from shutil import move
+            ed_path = subtaskpaths[opt['subtasks'].index('empatheticdialogues')]
+            srcdir = os.path.join(ed_path, 'empatheticdialogues')
+            if os.path.isdir(srcdir):
+                for filename in os.listdir(srcdir):
+                    move(os.path.join(srcdir, filename), os.path.join(ed_path, filename))
+                os.rmdir(os.path.join(ed_path, 'empatheticdialogues'))
 
         context = _build_contextual_document(opt, subtaskpaths)
         blended_context_path = os.path.join(dpath, 'blended_context.jsonl')
@@ -94,20 +105,21 @@ def _convai_parser(filepath
     with open(filepath, 'r') as file:
         lines = file.readlines()
     for i, line in enumerate(lines):
-        lines[i] = re.sub(r"^[0-9]+", "", line).strip().replace('\t', ' ')
+        lines[i] = re.sub(r"^[0-9]+", "", line).strip()
     
     # Collecting
     persona1, persona2, seed_pair = [], [], None
     episode_done = False
     for i, line in enumerate(lines):
         # print('Line', i, line) # for debug
-        if line.startswith("your persona: "):
+        if line.startswith("partner's persona: "):
             persona1.append(line)
-            episode_done = False
-        elif line.startswith("partner's persona: "):
+        elif line.startswith("your persona: "):
             persona2.append(line)
+            episode_done = False
         elif not episode_done:
-            seed_pair = [lines[i], lines[i+1]]
+            seed_pair = line.split('\t')
+            assert len(seed_pair) == 2
             leading_contexts.append('\n'.join(persona1)) 
             following_contexts.append('\n'.join(persona2))
             seed_list.append(seed_pair)

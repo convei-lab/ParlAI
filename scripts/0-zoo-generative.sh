@@ -1,4 +1,4 @@
-#! /usr/bin/bash
+#! /bin/bash
 set -o xtrace
 # # Conv
 # CUDA_VISIBLE_DEVICES=1 parlai eval_model \
