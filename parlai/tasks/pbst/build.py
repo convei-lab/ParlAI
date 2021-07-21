@@ -59,10 +59,21 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-        #     build_data.make_dir(subtaskpath)
-        #     downloadable_file = RESOURCES[subtask]
-        #     downloadable_file.download_file(subtaskpath) # TODO ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.
+        for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+            build_data.make_dir(subtaskpath)
+            downloadable_file = RESOURCES[subtask]
+            downloadable_file.download_file(subtaskpath) 
+
+        if 'empatheticdialogues' in opt['subtasks']:
+            # Move empatheticdialogues to parent directory
+            # (ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.)
+            from shutil import move
+            ed_path = subtaskpaths[opt['subtasks'].index('empatheticdialogues')]
+            srcdir = os.path.join(ed_path, 'empatheticdialogues')
+            if os.path.isdir(srcdir):
+                for filename in os.listdir(srcdir):
+                    move(os.path.join(srcdir, filename), os.path.join(ed_path, filename))
+                os.rmdir(os.path.join(ed_path, 'empatheticdialogues'))
 
         context = _build_contextual_document(opt, subtaskpaths)
         blended_context_path = os.path.join(dpath, 'blended_context.jsonl')

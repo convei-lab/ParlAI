@@ -7,9 +7,7 @@ zoo:dodecadialogue/convai2_ft/model,\
 zoo:dodecadialogue/wizard_of_wikipedia_ft/model,\
 zoo:dodecadialogue/empathetic_dialogues_ft/model \
 --expert-model-opt-files \
-/home/theorist/data3/ParlAI/data/models/dodecadialogue/convai2_ft/model.opt,\
-/home/theorist/data3/ParlAI/data/models/dodecadialogue/wizard_of_wikipedia_ft/model.opt,\
-/home/theorist/data3/ParlAI/data/models/dodecadialogue/empathetic_dialogues_ft/model.opt \
+scripts/conv.opt,scripts/wow.opt,scripts/ed.opt \
 --num-self-mixs 10 \
 --display-examples True --datatype valid \
 --outfile ./data/pbst/machine_generated.txt --verbose \

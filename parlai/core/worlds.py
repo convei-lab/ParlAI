@@ -256,9 +256,8 @@ class World(object):
         """
         Reset all agents in the world, and world statistics.
         """
-        for (leader, follower) in self.agents:
-            leader.reset()
-            follower.reset()
+        for a in self.agents:
+            a.reset()
         self.max_exs = None
         self.total_exs = 0
         self.total_epochs = 0
@@ -1380,7 +1379,7 @@ class BackgroundDriverWorld(World):
 
         import torch.multiprocessing as mp
 
-        self._num_workers = self.opt['um_workers']
+        self._num_workers = self.opt['num_workers']
         # 4 per worker is somewhat arbitrary. 1 is potentially too few:
         # every worker is prevented from queuing up multiple batches.
         # Unbounded could fill up our memory too much. So 4 per worker.
