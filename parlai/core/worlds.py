@@ -256,9 +256,8 @@ class World(object):
         """
         Reset all agents in the world, and world statistics.
         """
-        for (leader, follower) in self.agents:
-            leader.reset()
-            follower.reset()
+        for a in self.agents:
+            a.reset()
         self.max_exs = None
         self.total_exs = 0
         self.total_epochs = 0
