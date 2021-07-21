@@ -17,27 +17,57 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        persona_utterance_dict_path = '/home/minju/bst/persona_link_file/p2u.json'
+        seed_utterance_convai2_path = '/home/minju/kbs/seed_utterance_pairs_convai2.json'
+        f_convai2_path = '/home/minju/kbs/following_convai2_kb.json'
+        l_convai2_path = '/home/minju/kbs/leading_convai2_kb.json'
 
-        # Make train file
-        persona_inference_list = []
-        with open(persona_utterance_dict_path) as json_file:
-            persona_utterance_dict = json.load(json_file)
-        persona_list = list(persona_utterance_dict.keys())
+        seed_utterance_wow_path = '/home/minju/kbs/seed_utterance_pairs_wizard_of_wikipedia.json'
+        f_wow_path = '/home/minju/kbs/following_wizard_of_wikipedia_kb.json'
+        l_wow_path = '/home/minju/kbs/leading_wizard_of_wikipedia_kb.json'
 
-        for i in tqdm(range(len(persona_list))):
-            utterance_list = persona_utterance_dict[persona_list[i]]
-            for utterance in utterance_list:
-                train_dict = {}
-                train_dict['text'] = utterance
-                train_dict['labels'] = persona_list[i]
-                train_dict['label_candidates'] = persona_list
-                persona_inference_list.append(train_dict)
+        seed_utterance_empathy_path = '/home/minju/kbs/seed_utterance_pairs_wizard_of_wikipedia.json'
+        f_empathy_path = '/home/minju/kbs/following_empatheticdialogues_kb.json'
+        l_empathy_path = '/home/minju/kbs/leading_empatheticdialogues_kb.json'
 
-        random.shuffle(persona_inference_list)
-        persona_inference_train_list = persona_inference_list[0:int(len(persona_inference_list) * 0.3)]
-        persona_inference_valid_list = persona_inference_list[int(len(persona_inference_list) * 0.8): int(len(persona_inference_list) * 0.9)]
-        persona_inference_test_list = persona_inference_list[int(len(persona_inference_list) * 0.9):]
+        # Make file
+        persona_inference_train_list = []
+        persona_inference_valid_list = []
+        persona_inference_test_list = []
+        with open(seed_utterance_convai2_path) as json_file:
+            seed_utterance_convai2 = json.load(json_file)
+
+        # leader's persona
+        with open(l_convai2_path) as json_file:
+            l_convai2 = json.load(json_file)
+
+        # follower's persona
+        with open(f_convai2_path) as json_file:
+            f_convai2 = json.load(json_file)
+
+        for i in tqdm(range(len(seed_utterance_convai2))):
+            dialog_dict_l = {}
+            dialog_dict_l['text'] = seed_utterance_convai2[i][0]
+            dialog_dict_l['labels'] = l_convai2[i]
+            dialog_dict_l['label_candidates'] = l_convai2 + f_convai2
+
+            dialog_dict_f = {}
+            dialog_dict_f['text'] = seed_utterance_convai2[i][1]
+            dialog_dict_f['labels'] = f_convai2[i]
+            dialog_dict_f['label_candidates'] = f_convai2 + l_convai2
+
+            if i <= int(len(seed_utterance_convai2) * 0.1):
+                persona_inference_train_list.append(dialog_dict_f)
+                persona_inference_train_list.append(dialog_dict_l)
+            elif i > int(len(seed_utterance_convai2) * 0.8) and i < int(len(seed_utterance_convai2) * 0.9):
+                persona_inference_valid_list.append(dialog_dict_f)
+                persona_inference_valid_list.append(dialog_dict_l)
+            elif i > int(len(seed_utterance_convai2) * 0.9):
+                persona_inference_test_list.append(dialog_dict_f)
+                persona_inference_test_list.append(dialog_dict_l)
+
+        with open(dpath + '/all_persona.json', "w") as json_file:
+            json.dump(l_convai2 + f_convai2, json_file)
+        print("Saved file at", dpath + '/all_persona.json')
 
         with open(dpath + '/train.json', "w") as json_file:
             json.dump(persona_inference_train_list, json_file)
@@ -50,12 +80,7 @@ def build(opt):
 
         with open(dpath + '/test.json', "w") as json_file:
             json.dump(persona_inference_test_list, json_file)
-        print("Saved file at", dpath + '/test.json')       
-
-        f = open(dpath + '/fixed_candidates.txt', 'w')
-        for persona in persona_list:
-            f.write(persona + '\n') 
-        print("Saved candidate file at", dpath + '/fixed_candidates.txt')   
+        print("Saved file at", dpath + '/test.json')     
 
         # Mark the data as built.
         build_data.mark_done(dpath, version_string=version)

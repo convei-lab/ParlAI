@@ -62,10 +62,10 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-            build_data.make_dir(subtaskpath)
-            downloadable_file = RESOURCES[subtask]
-            downloadable_file.download_file(subtaskpath) 
+        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+        #     build_data.make_dir(subtaskpath)
+        #     downloadable_file = RESOURCES[subtask]
+        #     downloadable_file.download_file(subtaskpath) 
 
         if 'empatheticdialogues' in opt['subtasks']:
             # Move empatheticdialogues to parent directory
@@ -298,7 +298,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target):
     # Semantic Retreival (e.g. poly-encoder, DPR)
     if mode == 'semantic':
         # EDITED BY MINJU
-        parlai_data_path = '/home/minju/ParlAI/data/'
+        parlai_data_path = '/home/minju/data1/ParlAI/data/'
 
         opt = {}
         if target == 'convai2':
@@ -365,6 +365,73 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target):
 
     # TODO Manual Retrieval (e.g. BST -> 이 경우 context가 좀 더 단순해져야 한다. 현재 leading/following 불필요)
 
+    # Lexical Retrieval??
+    elif mode == 'lexical':
+        # EDITED BY MINJU
+        parlai_data_path = '/home/minju/data1/ParlAI/data/'
+
+        opt = {}
+        if target == 'convai2':
+            opt['task'] = 'persona_inference:retrieval'
+        elif target == 'wizard_of_wikipedia':
+            opt['task'] = 'topic_inference:retrieval'
+        else:
+            opt['task'] = 'emotion_inference:retrieval'
+
+        split = opt['task'].split(':')
+
+        # parlai eval_model -m ir_baseline -t emotion_inference --world-logs /home/minju/eval_result.jsonl --batchsize 256
+        opt['model'] = 'ir_baseline'
+        opt['model_file'] = None
+        opt['eval_candidates'] = 'inline'
+        opt['fixed_candidates_path'] = None
+        opt['batchsize'] = 256
+        opt['datatype'] = 'retrieval'
+        opt['world_logs'] = parlai_data_path + split[0] + '/retrieval_report.json'
+        opt['report_filename'] = parlai_data_path + split[0] + '/retrieval_report.json'
+        opt['log_keep_fields'] = 'all'
+        opt['num_examples'] = -1
+        opt['display_examples'] = False
+        opt['save_format'] = 'conversations'
+
+        eval_list = []
+
+        candidates_path = '/home/minju/ParlAI/data/' + split[0] + '/fixed_candidates.txt'
+        f = open(candidates_path, 'r')
+        candidates = f.readlines()
+        f.close()
+
+        for query in seed_queries:
+            input_dict = {'text': query, 'labels': candidates[0], 'label_candidates': candidates}
+            eval_list.append(input_dict)
+
+        with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:
+            json.dump(eval_list, json_file)
+        print("Saved queries to", parlai_data_path + split[0] + '/retrieval.json')
+
+        eval_model(opt)
+
+        # Open retrieval result (jsonl file)
+        retrieval_result_path = opt['report_filename'] + 'l'
+
+        with open(retrieval_result_path, 'r') as json_file:
+            json_list = list(json_file)
+
+        retrieval_result = []
+        for json_str in json_list:
+            result = json.loads(json_str)
+            retrieval_result.append(result)
+
+        retrieved_doc = []
+        for retrieved in retrieval_result:
+            retrieved_doc.append(retrieved['dialog'][0][1]['text'])
+
+        print("Contextual alignment example")
+        print("query", seed_queries[0])
+        print("document", retrieved_doc[0])
+
+        return retrieved_doc
+
     return retrieved_doc_idx
         
 
@@ -405,8 +472,8 @@ def _build_contextual_document(opt, subtaskpaths):
                 leading_contexts = leading_context_dic[target]
                 following_contexts = following_context_dic[target]
                 # Retrieve contextual document from different task
-                leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts, 'semantic', target)
-                following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts, 'semantic', target)
+                leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical', target)
+                following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical', target)
  
                 # Align the seed with all the other subtask's context
                 if target == 'convai2':
