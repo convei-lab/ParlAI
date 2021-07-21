@@ -30,6 +30,8 @@ def build(opt):
 
         # file structure: utterance, label, candidates(splitted by '\t')
         topic_inference_train_list = []
+        topic_inference_valid_list = []
+        topic_inference_test_list = []
         with open(seed_utterance_wow_path) as json_file:
             seed_utterance_wow = json.load(json_file)
 
@@ -41,61 +43,30 @@ def build(opt):
 
         for i in tqdm(range(len(seed_utterance_wow))):
             dialog_dict_f = {}
-            dialog_dict_f['text'] = seed_utterance_wow[i][0]
+            dialog_dict_f['text'] = seed_utterance_wow[i][1]
             dialog_dict_f['labels'] = l_wow[i]
-            # dialog_dict_f['candidates'] = l_wow_unique
+            dialog_dict_f['label_candidates'] = l_wow_unique
 
             dialog_dict_l = {}
-            dialog_dict_l['text'] = seed_utterance_wow[i][1]
+            dialog_dict_l['text'] = seed_utterance_wow[i][0]
             dialog_dict_l['labels'] = l_wow[i]
-            # dialog_dict_l['candidates'] = l_wow_unique
+            dialog_dict_l['label_candidates'] = l_wow_unique
 
-            topic_inference_train_list.append(dialog_dict_f)
-            topic_inference_train_list.append(dialog_dict_l)
+            if i <= int(len(seed_utterance_wow) * 0.3):
+                topic_inference_train_list.append(dialog_dict_f)
+                topic_inference_train_list.append(dialog_dict_l)
+            elif i > int(len(seed_utterance_wow) * 0.8) and i < int(len(seed_utterance_wow) * 0.9):
+                topic_inference_valid_list.append(dialog_dict_f)
+                topic_inference_valid_list.append(dialog_dict_l)
+            elif i > int(len(seed_utterance_wow) * 0.9):
+                topic_inference_test_list.append(dialog_dict_f)
+                topic_inference_test_list.append(dialog_dict_l)
   
         f = open(dpath + '/fixed_candidates.txt', 'w')
         for candidate in l_wow_unique:
             f.write(candidate + '\n')
         print("Saved candidate file at", dpath + '/fixed_candidates.txt')       
         f.close()      
-
-        # topic_inference_valid_list = []
-        # with open(seed_utterance_wow_path) as json_file:
-        #     seed_utterance_wow = json.load(json_file)
-
-        # for i in tqdm(range(len(seed_utterance_wow))):
-        #     dialog_dict_f = {}
-        #     dialog_dict_f['text'] = seed_utterance_wow[i][0]
-        #     dialog_dict_f['candidates'] = f_convai2
-
-        #     dialog_dict_l = {}
-        #     dialog_dict_l['text'] = seed_utterance_wow[i][1]
-        #     dialog_dict_l['candidates'] = l_convai2
-
-        #     topic_inference_valid_list.append(dialog_dict_f)
-        #     topic_inference_valid_list.append(dialog_dict_l)
-
-        # topic_inference_test_list = []
-        # with open(seed_utterance_empathy_path) as json_file:
-        #     seed_utterance_empathy = json.load(json_file)
-
-        # for i in tqdm(range(len(seed_utterance_empathy))):
-        #     dialog_dict_f = {}
-        #     dialog_dict_f['text'] = seed_utterance_empathy[i][0]
-        #     dialog_dict_f['candidates'] = f_convai2
-
-        #     dialog_dict_l = {}
-        #     dialog_dict_l['text'] = seed_utterance_empathy[i][1]
-        #     dialog_dict_l['candidates'] = l_convai2
-
-        #     topic_inference_test_list.append(dialog_dict_f)
-        #     topic_inference_test_list.append(dialog_dict_l)
-
-        # topic_inference_dict = {'train': topic_inference_train_list, 'valid': topic_inference_valid_list, 'test': topic_inference_test_list}
-
-        # with open(dpath + '/data.json', "w") as json_file:
-        #     json.dump(topic_inference_dict, json_file)
-        # print("Saved file at", dpath + '/data.json')
         
         with open(dpath + '/train.json', "w") as json_file:
             json.dump(topic_inference_train_list, json_file)
@@ -103,20 +74,12 @@ def build(opt):
 
         # Due to storge issue, use train file as valid/test file
         with open(dpath + '/valid.json', "w") as json_file:
-            json.dump(topic_inference_train_list, json_file)
+            json.dump(topic_inference_valid_list, json_file)
         print("Saved file at", dpath + '/valid.json')
 
         with open(dpath + '/test.json', "w") as json_file:
-            json.dump(topic_inference_train_list, json_file)
+            json.dump(topic_inference_test_list, json_file)
         print("Saved file at", dpath + '/test.json')        
-
-        # with open(dpath + '/valid.json', "w") as json_file:
-        #     json.dump(topic_inference_valid_list, json_file)
-        # print("Saved file at", dpath + '/valid.json')
-
-        # with open(dpath + '/test.json', "w") as json_file:
-        #     json.dump(topic_inference_test_list, json_file)
-        # print("Saved file at", dpath + '/test.json')
 
         # Mark the data as built.
         build_data.mark_done(dpath, version_string=version)
