@@ -28,7 +28,7 @@ class PersonaInferenceTeacher(DialogTeacher):
                 yield {"text": text, "labels": labels, 'label_candidates': label_candidates}, True
             elif 'labels' in dialog.keys():
                 labels = dialog['labels']
-                yield {'text': text, 'labels': labels}
+                yield {'text': text, 'labels': labels}, True
             else:
                 yield {"text": text}, True
 

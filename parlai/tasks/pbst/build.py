@@ -332,7 +332,8 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
         f.close()
 
         for query in seed_queries:
-            input_dict = {'text': query, 'label_candidates': candidates}
+            # input_dict = {'text': query, 'label_candidates': candidates}
+            input_dict = {'text': query}
             eval_list.append(input_dict)
 
         with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:
@@ -380,13 +381,14 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
 
         split = opt['task'].split(':')
 
-        # parlai eval_model -m ir_baseline -t emotion_inference --world-logs /home/minju/eval_result.jsonl --batchsize 256
+        # parlai eval_model -m ir_baseline -t emotion_inference --world-logs /home/minju/data1/ParlAI/data/emotion_inference/eval_result.jsonl --batchsize 256 --label-candidates-file /home/minju/data1/ParlAI/data/emotion_inference/fixed_candidates.txt
         opt['model'] = 'ir_baseline'
         opt['model_file'] = None
         opt['eval_candidates'] = 'inline'
         opt['fixed_candidates_path'] = None
         opt['batchsize'] = 256
         opt['datatype'] = 'retrieval'
+        opt['label_candidates_file'] = parlai_data_path + split[0] + '/fixed_candidates.txt'
         opt['world_logs'] = parlai_data_path + split[0] + '/retrieval_report.json'
         opt['report_filename'] = parlai_data_path + split[0] + '/retrieval_report.json'
         opt['log_keep_fields'] = 'all'
@@ -402,7 +404,8 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
         f.close()
 
         for query in seed_queries:
-            input_dict = {'text': query, 'labels': candidates[0], 'label_candidates': candidates}
+            # input_dict = {'text': query, 'labels': candidates[0], 'label_candidates': candidates}
+            input_dict = {'text': query}
             eval_list.append(input_dict)
 
         with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:

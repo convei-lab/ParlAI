@@ -16,17 +16,17 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        seed_utterance_convai2_path = '/home/minju/kbs/seed_utterance_pairs_convai2.json'
-        f_convai2_path = '/home/minju/kbs/following_convai2_kb.json'
-        l_convai2_path = '/home/minju/kbs/leading_convai2_kb.json'
+        seed_utterance_convai2_path = opt['datapath'] + '/pbst/' + 'seed_utterance_pairs_convai2.json'
+        f_convai2_path = opt['datapath'] + '/pbst/' + 'following_convai2_kb.json'
+        l_convai2_path = opt['datapath'] + '/pbst/' + 'leading_convai2_kb.json'
 
-        seed_utterance_wow_path = '/home/minju/kbs/seed_utterance_pairs_wizard_of_wikipedia.json'
-        f_wow_path = '/home/minju/kbs/following_wizard_of_wikipedia_kb.json'
-        l_wow_path = '/home/minju/kbs/leading_wizard_of_wikipedia_kb.json'
+        seed_utterance_wow_path = opt['datapath'] + '/pbst/' + 'seed_utterance_pairs_wizard_of_wikipedia.json'
+        f_wow_path = opt['datapath'] + '/pbst/' + 'following_wizard_of_wikipedia_kb.json'
+        l_wow_path = opt['datapath'] + '/pbst/' + 'leading_wizard_of_wikipedia_kb.json'
 
-        seed_utterance_empathy_path = '/home/minju/kbs/seed_utterance_pairs_empatheticdialogues.json'
-        f_empathy_path = '/home/minju/kbs/following_empatheticdialogues_kb.json'
-        l_empathy_path = '/home/minju/kbs/leading_empatheticdialogues_kb.json'
+        seed_utterance_empathy_path = opt['datapath'] + '/pbst/' + 'seed_utterance_pairs_wizard_of_wikipedia.json'
+        f_empathy_path = opt['datapath'] + '/pbst/' + 'following_empatheticdialogues_kb.json'
+        l_empathy_path = opt['datapath'] + '/pbst/' + 'leading_empatheticdialogues_kb.json'
 
         # file structure: utterance, label, candidates(splitted by '\t')
         emotion_inference_train_list = []
@@ -44,8 +44,9 @@ def build(opt):
         for i in tqdm(range(len(seed_utterance_empathy))):
             dialog_dict_l = {}
             dialog_dict_l['text'] = seed_utterance_empathy[i][0]
-            dialog_dict_l['labels'] = l_empathy[i]
-            dialog_dict_l['label_candidates'] = l_empathy_unique
+            situation, emotion = l_empathy[i].split('\n')
+            dialog_dict_l['labels'] = situation + ' ' + emotion
+            # dialog_dict_l['label_candidates'] = l_empathy_unique
 
             if i <= int(len(seed_utterance_empathy) * 0.3):
                 emotion_inference_train_list.append(dialog_dict_l)
@@ -56,6 +57,8 @@ def build(opt):
   
         f = open(dpath + '/fixed_candidates.txt', 'w')
         for candidate in l_empathy_unique:
+            split = candidate.split('\n')
+            candidate = split[0] + ' ' + split[1]
             f.write(candidate + '\n')
         print("Saved candidate file at", dpath + '/fixed_candidates.txt')       
         f.close()      

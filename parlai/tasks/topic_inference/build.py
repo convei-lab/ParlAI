@@ -16,17 +16,17 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        seed_utterance_convai2_path = '/home/minju/kbs/seed_utterance_pairs_convai2.json'
-        f_convai2_path = '/home/minju/kbs/following_convai2_kb.json'
-        l_convai2_path = '/home/minju/kbs/leading_convai2_kb.json'
+        seed_utterance_convai2_path = opt['datapath'] + '/pbst/' + 'seed_utterance_pairs_convai2.json'
+        f_convai2_path = opt['datapath'] + '/pbst/' + 'following_convai2_kb.json'
+        l_convai2_path = opt['datapath'] + '/pbst/' + 'leading_convai2_kb.json'
 
-        seed_utterance_wow_path = '/home/minju/kbs/seed_utterance_pairs_wizard_of_wikipedia.json'
-        f_wow_path = '/home/minju/kbs/following_wizard_of_wikipedia_kb.json'
-        l_wow_path = '/home/minju/kbs/leading_wizard_of_wikipedia_kb.json'
+        seed_utterance_wow_path = opt['datapath'] + '/pbst/' + 'seed_utterance_pairs_wizard_of_wikipedia.json'
+        f_wow_path = opt['datapath'] + '/pbst/' + 'following_wizard_of_wikipedia_kb.json'
+        l_wow_path = opt['datapath'] + '/pbst/' + 'leading_wizard_of_wikipedia_kb.json'
 
-        seed_utterance_empathy_path = '/home/minju/kbs/seed_utterance_pairs_wizard_of_wikipedia.json'
-        f_empathy_path = '/home/minju/kbs/following_empatheticdialogues_kb.json'
-        l_empathy_path = '/home/minju/kbs/leading_empatheticdialogues_kb.json'
+        seed_utterance_empathy_path = opt['datapath'] + '/pbst/' + 'seed_utterance_pairs_wizard_of_wikipedia.json'
+        f_empathy_path = opt['datapath'] + '/pbst/' + 'following_empatheticdialogues_kb.json'
+        l_empathy_path = opt['datapath'] + '/pbst/' + 'leading_empatheticdialogues_kb.json'
 
         # file structure: utterance, label, candidates(splitted by '\t')
         topic_inference_train_list = []
@@ -45,12 +45,12 @@ def build(opt):
             dialog_dict_f = {}
             dialog_dict_f['text'] = seed_utterance_wow[i][1]
             dialog_dict_f['labels'] = l_wow[i]
-            dialog_dict_f['label_candidates'] = l_wow_unique
+            # dialog_dict_f['label_candidates'] = l_wow_unique
 
             dialog_dict_l = {}
             dialog_dict_l['text'] = seed_utterance_wow[i][0]
             dialog_dict_l['labels'] = l_wow[i]
-            dialog_dict_l['label_candidates'] = l_wow_unique
+            # dialog_dict_l['label_candidates'] = l_wow_unique
 
             if i <= int(len(seed_utterance_wow) * 0.3):
                 topic_inference_train_list.append(dialog_dict_f)
