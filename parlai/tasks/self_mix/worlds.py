@@ -110,6 +110,19 @@ class SelfMixWorld(TeamDebateWorld):
             return [open_msg for open_msg in self._openers[episode_num]]# [random.choice(self._openers)]
         return None
 
+    def reset(self):
+        """
+        Reset all agents in the world, and world statistics.
+        """
+        for (leader, follower) in self.agents:
+            leader.reset()
+            follower.reset()
+        self.max_exs = None
+        self.total_exs = 0
+        self.total_epochs = 0
+        self.total_parleys = 0
+        self.time.reset()
+
     # def write(self):
     #     pass
 

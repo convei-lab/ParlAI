@@ -2,6 +2,7 @@
 
 # Copyright Conversational Intelligence Lab. and its affiliates.
 
+from parlai.core.worlds import World
 from typing import Optional
 from parlai.core.params import ParlaiParser
 from parlai.core.opt import Opt
@@ -17,10 +18,10 @@ from parlai.utils.io import PathManager
 def get_contexts_data(opt, shared=None):
     if shared and 'contexts_data' in shared:
         return shared['contexts_data']
-    return _load_personas(opt=opt)
+    return _load_contexts(opt=opt)
 
 
-def _load_personas(opt):
+def _load_contexts(opt):
     print('[ loading contexts.. ]')
     fname = raw_data_path(opt)
 

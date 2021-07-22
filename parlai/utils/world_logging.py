@@ -220,6 +220,7 @@ class DebateLogger(WorldLogger):
         out = []
         
         # dialogue initiation
+        text_lst = []
         partner_context = []
         subtask_context = {}
         seeded = False
@@ -228,7 +229,6 @@ class DebateLogger(WorldLogger):
         
         for i, expertise in enumerate(episode):
             line = {'id': '', 'text': '', 'labels': '', 'episode_done': False,}
-            text_lst = []
 
             for j, (subtask, parley) in enumerate(zip(subtasks, expertise)):
                 first_act, second_act = parley
@@ -293,7 +293,8 @@ class DebateLogger(WorldLogger):
         
         for i, expertise in enumerate(episode):
             line = {'id': '', 'text': '', 'labels': '', 'episode_done': False,}
-            text_lst = [] # TODO this needs to go away
+            text_lst = [] # By reinitializing text fields, we're changing 
+                          # the first utterance pairs to exclude context information
 
             for j, (subtask, parley) in enumerate(zip(subtasks, expertise)):
                 first_act, second_act = parley
