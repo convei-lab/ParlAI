@@ -311,7 +311,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
         split = opt['task'].split(':')
 
         # --world-logs true --report-filename ~/bst/convai_generation.json
-        opt['model_file'] = '/home/minju/bst/models/' + split[0] + '/tmp/model'
+        # opt['model_file'] = '/home/minju/bst/models/' + split[0] + '/tmp/model'
         opt['model'] = 'transformer/biencoder'
         opt['eval_candidates'] = 'inline'
         opt['fixed_candidates_path'] = parlai_data_path + split[0] + '/fixed_candidates.txt'
@@ -326,7 +326,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
 
         eval_list = []
 
-        candidates_path = '/home/minju/ParlAI/data/' + split[0] + '/fixed_candidates.txt'
+        candidates_path = parlai_data_path + split[0] + '/fixed_candidates.txt'
         f = open(candidates_path, 'r')
         candidates = f.readlines()
         f.close()
