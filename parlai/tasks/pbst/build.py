@@ -294,11 +294,11 @@ def _parse_task_dataset(subtask, subtaskpath
         seeds.extend(fseeds)
     return leading_contextss, following_contextss, seeds
 
-def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target):
+def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, subtaskpaths):
     # Semantic Retreival (e.g. poly-encoder, DPR)
     if mode == 'semantic':
         # EDITED BY MINJU
-        parlai_data_path = '/home/minju/data1/ParlAI/data/'
+        parlai_data_path = subtaskpaths[0][:subtaskpaths[0].find('pbst')]
 
         opt = {}
         if target == 'convai2':
@@ -368,7 +368,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target):
     # Lexical Retrieval??
     elif mode == 'lexical':
         # EDITED BY MINJU
-        parlai_data_path = '/home/minju/data1/ParlAI/data/'
+        parlai_data_path = subtaskpaths[0][:subtaskpaths[0].find('pbst')]
 
         opt = {}
         if target == 'convai2':
@@ -396,7 +396,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target):
 
         eval_list = []
 
-        candidates_path = '/home/minju/ParlAI/data/' + split[0] + '/fixed_candidates.txt'
+        candidates_path = parlai_data_path + split[0] + '/fixed_candidates.txt'
         f = open(candidates_path, 'r')
         candidates = f.readlines()
         f.close()
@@ -472,8 +472,8 @@ def _build_contextual_document(opt, subtaskpaths):
                 leading_contexts = leading_context_dic[target]
                 following_contexts = following_context_dic[target]
                 # Retrieve contextual document from different task
-                leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical', target)
-                following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical', target)
+                leading_doc_ids = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical', target, subtaskpaths)
+                following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical', target, subtaskpaths)
  
                 # Align the seed with all the other subtask's context
                 if target == 'convai2':

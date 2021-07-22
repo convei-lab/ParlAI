@@ -233,7 +233,7 @@ def eval_model(opt):
 
     # load model and possibly print opt
     agent = create_agent(opt, requireModelExists=True)
-    agent.opt.log()
+    # agent.opt.log()
 
     tasks = opt['task'].split(',')
     reports = []
