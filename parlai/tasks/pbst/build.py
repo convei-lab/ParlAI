@@ -62,10 +62,10 @@ def build(opt):
         build_data.make_dir(dpath)
 
         # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-        #     build_data.make_dir(subtaskpath)
-        #     downloadable_file = RESOURCES[subtask]
-        #     downloadable_file.download_file(subtaskpath) 
+        for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+            build_data.make_dir(subtaskpath)
+            downloadable_file = RESOURCES[subtask]
+            downloadable_file.download_file(subtaskpath) 
 
         if 'empatheticdialogues' in opt['subtasks']:
             # Move empatheticdialogues to parent directory
@@ -478,15 +478,18 @@ def _build_contextual_document(opt, subtaskpaths):
                 following_doc_ids = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical', target, subtaskpaths)
  
                 # Align the seed with all the other subtask's context
-                if target == 'convai2':
-                    lcm[i][j] = leading_doc_ids # [leading_contexts[i] for i in leading_doc_ids] # no dependency leader-follower
-                    fcm[i][j] = following_doc_ids # [following_contexts[i] for i in following_doc_ids]
-                elif target == 'wizard_of_wikipedia':
-                    lcm[i][j] = leading_doc_ids # [leading_contexts[i] for i in following_doc_ids] # follower (wizard) based
-                    fcm[i][j] = following_doc_ids # [following_contexts[i] for i in following_doc_ids]
-                elif target == 'empatheticdialogues':
-                    lcm[i][j] = leading_doc_ids # [leading_contexts[i] for i in leading_doc_ids] # leader (situation) based
-                    fcm[i][j] = following_doc_ids # [following_contexts[i] for i in leading_doc_ids]
+                # if target == 'convai2':
+                #     lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # no dependency leader-follower
+                #     fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
+                # elif target == 'wizard_of_wikipedia':
+                #     lcm[i][j] = [leading_contexts[i] for i in following_doc_ids] # follower (wizard) based
+                #     fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
+                # elif target == 'empatheticdialogues':
+                #     lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # leader (situation) based
+                #     fcm[i][j] = [following_contexts[i] for i in leading_doc_ids]
+
+                lcm[i][j] = leading_doc_ids
+                fcm[i][j] = following_doc_ids
     
     context = []
 
