@@ -397,7 +397,6 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
         opt['save_format'] = 'conversations'
 
         eval_list = []
-
         candidates_path = parlai_data_path + split[0] + '/fixed_candidates.txt'
         f = open(candidates_path, 'r')
         candidates = f.readlines()
@@ -480,14 +479,14 @@ def _build_contextual_document(opt, subtaskpaths):
  
                 # Align the seed with all the other subtask's context
                 if target == 'convai2':
-                    lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # no dependency leader-follower
-                    fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
+                    lcm[i][j] = leading_doc_ids # [leading_contexts[i] for i in leading_doc_ids] # no dependency leader-follower
+                    fcm[i][j] = following_doc_ids # [following_contexts[i] for i in following_doc_ids]
                 elif target == 'wizard_of_wikipedia':
-                    lcm[i][j] = [leading_contexts[i] for i in following_doc_ids] # follower (wizard) based
-                    fcm[i][j] = [following_contexts[i] for i in following_doc_ids]
+                    lcm[i][j] = leading_doc_ids # [leading_contexts[i] for i in following_doc_ids] # follower (wizard) based
+                    fcm[i][j] = following_doc_ids # [following_contexts[i] for i in following_doc_ids]
                 elif target == 'empatheticdialogues':
-                    lcm[i][j] = [leading_contexts[i] for i in leading_doc_ids] # leader (situation) based
-                    fcm[i][j] = [following_contexts[i] for i in leading_doc_ids]
+                    lcm[i][j] = leading_doc_ids # [leading_contexts[i] for i in leading_doc_ids] # leader (situation) based
+                    fcm[i][j] = following_doc_ids # [following_contexts[i] for i in leading_doc_ids]
     
     context = []
 
