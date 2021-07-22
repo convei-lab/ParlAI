@@ -903,6 +903,13 @@ class TorchGeneratorAgent(TorchAgent, ABC):
         )
         if not self.skip_generation:
             retval.beam_texts = beam_texts
+            
+        # EDITED BY MINJU
+        from icecream import ic
+        # ic(beam_preds_scores)
+        # for beam in beams:
+        #     ic(beam.get_rescored_finished())
+        
         return retval
 
     def _treesearch_factory(self, device):
@@ -1098,6 +1105,11 @@ class TorchGeneratorAgent(TorchAgent, ABC):
             assert batch.label_vec is not None, "need label_vec for _generate"
             dev = batch.label_vec.device
 
+        # EDITED BY MINJU
+        from icecream import ic
+        # ic(encoder_states)
+        # ic(model.encoder)
+
         bsz = batch.batchsize
         if batch.text_vec is not None:
             batchsize = batch.batchsize
@@ -1126,7 +1138,14 @@ class TorchGeneratorAgent(TorchAgent, ABC):
             score, incr_state = model.decoder(decoder_input, encoder_states, incr_state)
             # only need the final hidden state to make the word prediction
             score = score[:, -1:, :]
-            score = model.output(score)
+
+            # EDITED BY MINJU
+            # from icecream import ic
+            # ic(score) # final hidden state
+            # score = model.output(score)
+            # ic(score) # model에 넣고나서의 final hidden state
+            # print('-' * 50)
+
             # score contains softmax scores for bsz * beam_size samples
             score = score.view(bsz, beam_size, -1)
             if self.temperature != 1.0:
@@ -1142,6 +1161,12 @@ class TorchGeneratorAgent(TorchAgent, ABC):
                     :, :, prefix_toks
                 ] = False  # everything except prefix toks should be neginf
                 score[prefix_mask] = neginf(score.dtype)
+
+            # # EDITED BY MINJU
+            # for b in beams:
+            #     ic(b) # NucleusSampling object
+            #     score # score는 beam에게 있어 logprobs
+
             for i, b in enumerate(beams):
                 if not b.is_done():
                     b.advance(score[i])
@@ -1162,8 +1187,7 @@ class TorchGeneratorAgent(TorchAgent, ABC):
             )
 
         # get all finalized candidates for each sample (and validate them)
-        n_best_beam_preds_scores = [b.get_rescored_finished() for b in beams]
-
+        n_best_beam_preds_scores = [b.get_rescored_finished() for b in beams] # dictionary index가 나옴 (hidden state 아님)
         if hasattr(self, '_rerank_beams'):
             n_best_beam_preds_scores = self._rerank_beams(  # type: ignore
                 batch, n_best_beam_preds_scores
@@ -1420,6 +1444,10 @@ class TreeSearch(object):
                 self.context_block_ngram, logprobs, self.context
             )
 
+        # EDITED BY MINJU
+        # from icecream import ic
+        # ic(logprobs)
+
         hyp_ids, tok_ids, self.scores = self.select_paths(
             logprobs, self.scores, current_length
         )
@@ -1547,6 +1575,14 @@ class TreeSearch(object):
 
         if n_best is not None:
             srted = srted[:n_best]
+
+        # EDITED BY MINJU
+        # from icecream import ic
+        # for rsc in rescored_finished:
+        #     ic(rsc.timestep)
+        #     ic(rsc.hypid)
+        #     ic(rsc.score)
+        #     ic(rsc.tokenid)
 
         n_best_list = [
             (self._get_pretty_hypothesis(self._get_hyp_from_finished(hyp)), hyp.score)

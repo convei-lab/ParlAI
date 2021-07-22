@@ -388,9 +388,13 @@ def load_world_module(
             world_name = "DefaultWorld"
     module_name = "%s.tasks.%s.worlds" % (repo, task)
 
+    # EDITED BY MINJU
+    # from icecream import ic
+    # ic(module_name)
+
     try:
         my_module = importlib.import_module(module_name)
-        world_class = getattr(my_module, world_name)
+        world_class = getattr(my_module, world_name) # my_model: parlai.tasks.convai2.worlds world_name: DefaultWorld
     except (ModuleNotFoundError, AttributeError):
         # Defaults to this if you did not specify a world for your task.
         world_class = _get_default_world(default_world, num_agents)

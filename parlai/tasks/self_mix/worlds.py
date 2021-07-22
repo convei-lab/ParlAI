@@ -13,6 +13,9 @@ from parlai.core.agents import Agent
 from parlai.core.worlds import create_task, TeamDebateWorld, validate
 from parlai.core.message import Message
 
+# EDITED BY MINJU
+import torch
+ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli')
 
 def load_openers(opt) -> Optional[List[str]]:
     base_task = opt['task'].split(':')[0]
@@ -307,6 +310,18 @@ class SelfMixWorld(TeamDebateWorld):
 def fact_check(claim, doc) -> bool:
     # TODO sentence-pair NLI for fact check
     # random decision
+    ROBERTA.eval()
+
+    with torch.no_grad():
+        tokens = ROBERTA.encode(claim, doc)
+        score = ROBERTA.predict('mnli', tokens) # [contradict, neutral, entailment]
+        prediction = score.argmax().item()
+    
+    if prediction == 0:
+        verdict = False
+    else:
+        verdict = True
+
     verdict = True if random.randint(1, 10) >= 7 else False
     return verdict
 

@@ -159,6 +159,8 @@ def _eval_single_world(opt, agent, task):
 
     world = create_task(task_opt, agent)  # create worlds for tasks
 
+    # 여기서 world.acts는 None임
+
     # set up logging
     log_every_n_secs = opt.get('log_every_n_secs', -1)
     if log_every_n_secs <= 0:
@@ -175,7 +177,7 @@ def _eval_single_world(opt, agent, task):
 
     while not world.epoch_done() and cnt < max_cnt:
         cnt += opt.get('batchsize', 1)
-        world.parley()
+        world.parley() # world: parlai.core.worlds.DialogPartnerWorld
         if world_logger is not None:
             world_logger.log(world)
         if opt['display_examples']:
@@ -231,7 +233,7 @@ def eval_model(opt):
 
     # load model and possibly print opt
     agent = create_agent(opt, requireModelExists=True)
-    agent.opt.log()
+    # agent.opt.log()
 
     tasks = opt['task'].split(',')
     reports = []

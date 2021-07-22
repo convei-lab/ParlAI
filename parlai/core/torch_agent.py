@@ -732,6 +732,17 @@ class TorchAgent(ABC, Agent):
             help='disable GPUs even if available. otherwise, will use GPUs if '
             'available on the device.',
         )
+
+        # EDITED BY MINJU
+        agent.add_argument(
+            '--generation-result-path',
+            type=str,
+            default=None,
+            help=(
+                'File path ofgeneration result '
+            ),
+        )
+
         cls.dictionary_class().add_cmdline_args(parser, partial_opt=partial_opt)
         ParlAILRScheduler.add_cmdline_args(parser, partial_opt=partial_opt)
         return parser
@@ -1468,6 +1479,10 @@ class TorchAgent(ABC, Agent):
                 obs['text_vec'] = history.get_history_vec()
                 obs['full_text_vec'] = history.get_history_vec()
 
+        # EDITED BY MINJU
+        # from icecream import ic
+        # ic(obs['full_text']) # history
+
         # check truncation
         if obs.get('text_vec') is not None:
             truncate_left = not self.history_reversed
@@ -2151,6 +2166,11 @@ class TorchAgent(ABC, Agent):
         ``eval_step`` methods instead. The former is called when labels are
         present in the observations batch; otherwise, the latter is called.
         """
+
+        # EDITED BY MINJU
+        from icecream import ic
+        # ic(observations)
+
         # clear local metrics before anything else
         self._local_metrics.clear()
 
@@ -2233,6 +2253,18 @@ class TorchAgent(ABC, Agent):
                 # save memory and compute by disabling autograd.
                 # use `with torch.enable_grad()` to gain back gradients.
                 output = self.eval_step(batch)
+
+        # # EDITED BY MINJU
+        # from icecream import ic
+        # import json
+        
+        # result_dict = {}
+        # result_dict['full_text'] = observations[0]['full_text']
+        # result_dict['label'] = observations[0]['eval_labels']
+        # result_dict['beam_texts'] = output['beam_texts']
+
+        # with open(self.opt['generation_result_path'], 'a') as outfile:
+        #     json.dump(result_dict, outfile, indent=2)
 
         if output is not None:
             # local metrics are automatically matched up
