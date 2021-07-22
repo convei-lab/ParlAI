@@ -333,7 +333,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
 
         for query in seed_queries:
             # input_dict = {'text': query, 'label_candidates': candidates}
-            input_dict = {'text': query}
+            input_dict = {'text': query, 'labels': candidates[0]}
             eval_list.append(input_dict)
 
         with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:
@@ -405,7 +405,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, target, s
 
         for query in seed_queries:
             # input_dict = {'text': query, 'labels': candidates[0], 'label_candidates': candidates}
-            input_dict = {'text': query}
+            input_dict = {'text': query, 'labels': candidates[0]}
             eval_list.append(input_dict)
 
         with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:
