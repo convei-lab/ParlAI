@@ -34,7 +34,7 @@ from parlai.utils.torch import (
     PipelineHelper,
 )
 from parlai.utils.fp16 import FP16SafeCrossEntropy
-from parlai.core.metrics import AverageMetric, TimerMetric
+from parlai.core.metrics import AverageMetric
 import parlai.utils.logging as logging
 
 
@@ -277,7 +277,7 @@ class TorchRankerAgent(TorchAgent):
         `set_interactive_mode` function.
         """
         # candidate variables
-        self.candidates = opt['candidates'] # inline
+        self.candidates = opt['candidates']
         self.eval_candidates = opt['eval_candidates']
         # options
         self.fixed_candidates_path = opt['fixed_candidates_path']
@@ -320,11 +320,6 @@ class TorchRankerAgent(TorchAgent):
 
     def get_task_candidates_path(self):
         path = self.opt['model_file'] + '.cands-' + self.opt['task'] + '.cands'
-
-        # EDITED BY MINJU
-        # from icecream import ic
-        # ic(path)
-
         if PathManager.exists(path) and self.opt['fixed_candidate_vecs'] == 'reuse':
             return path
         logging.warning(f'Building candidates file as they do not exist: {path}')
@@ -506,6 +501,7 @@ class TorchRankerAgent(TorchAgent):
             else batch.image.size(0)
         )
         self.model.eval()
+
         cands, cand_vecs, label_inds = self._build_candidates(
             batch, source=self.eval_candidates, mode='eval'
         )
@@ -524,12 +520,6 @@ class TorchRankerAgent(TorchAgent):
                 cand_encs = self.vocab_candidate_encs
 
         scores = self.score_candidates(batch, cand_vecs, cand_encs=cand_encs)
-
-        # # EDITED BY MINJU
-        # from icecream import ic
-        # ic(len(scores))
-        # ic(scores.size())
-
         if self.rank_top_k > 0:
             sorted_scores, ranks = scores.topk(
                 min(self.rank_top_k, scores.size(1)), 1, largest=True
@@ -910,12 +900,6 @@ class TorchRankerAgent(TorchAgent):
         overwrite the vectorize_fixed_candidates() method to produce encoded vectors
         instead of just vectorized ones.
         """
-
-        # # EDITED BY MINJU
-        # from icecream import ic
-        # ic(self.candidates)
-        # ic(self.eval_candidates)
-
         if shared:
             self.fixed_candidates = shared['fixed_candidates']
             self.fixed_candidate_vecs = shared['fixed_candidate_vecs']

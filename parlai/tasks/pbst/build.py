@@ -471,11 +471,11 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, 
         retrieval_result = []
         for json_str in json_list:
             result = json.loads(json_str)
-            if 'text' not in result:
-                result['text'] = ''
-                result['candidate_ids'] = []
-                result['text_candidates'] = [] 
-                result['candidate_scores'] = []
+            if 'text' not in result['dialog'][0][1]:
+                result['dialog'][0][1]['text'] = ''
+                result['dialog'][0][1]['candidate_ids'] = []
+                result['dialog'][0][1]['text_candidates'] = [] 
+                result['dialog'][0][1]['candidate_scores'] = []
             retrieval_result.append(result)
 
         for retrieved in retrieval_result:
