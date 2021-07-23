@@ -12,8 +12,6 @@ from parlai.agents.fixed_response.fixed_response import FixedResponseAgent
 from parlai.core.agents import Agent
 from parlai.core.worlds import create_task, TeamDebateWorld, validate
 from parlai.core.message import Message
-
-# EDITED BY MINJU
 import torch
 ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli')
 
@@ -171,7 +169,7 @@ class SelfMixWorld(TeamDebateWorld):
         return actions   
 
     def parley(self):
-        debug = False # TODO decide this
+        debug = True
         subtasks = ['convai2', 'wizardofwikipedia', 'emphatheticdialogues']
 
         if self.episode_done():
@@ -249,16 +247,20 @@ class SelfMixWorld(TeamDebateWorld):
             agents = self.agents
 
             # if debug: 
-            # for i in range(len(self.agents)):
-            #     for j in [0, 1]:
-            #         print(f'self.acts[{i}][{j}]', self.acts[i][j]['text'])    
-            # input('acts initialized')
+            #     for i in range(len(self.agents)):
+            #         for j in [0, 1]:
+            #             print(f'self.acts[{i}][{j}]', self.acts[i][j]['text'])    
+            #     input('acts initialized')
 
             # Leaders action
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][0] = agents[i][0].act()
-                response_candidates.append(acts[i][0]['beam_texts'])
+                # print("acts[i][0]['beam_texts'][0]", acts[i][0]['beam_texts'][0])
+                # input()
+                print('act[i][0]', acts[i][0])
+                input()
+                response_candidates.append(acts[i][0]['beam_texts'][0])
 
             # Leaders debate
             verdict = filter_out(response_candidates, self.documents)
@@ -283,7 +285,7 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][1] = agents[i][1].act()
-                response_candidates.append(acts[i][1]['beam_texts'])
+                response_candidates.append(acts[i][1]['beam_texts'][0])
 
             # Followers debate
             verdict = filter_out(response_candidates, self.documents)
@@ -313,6 +315,9 @@ def fact_check(claim, doc) -> bool:
     ROBERTA.eval()
 
     with torch.no_grad():
+        print('claim', claim)
+        print('doc', doc)
+        input()
         tokens = ROBERTA.encode(claim, doc)
         score = ROBERTA.predict('mnli', tokens) # [contradict, neutral, entailment]
         prediction = score.argmax().item()
@@ -322,11 +327,11 @@ def fact_check(claim, doc) -> bool:
     else:
         verdict = True
 
-    verdict = True if random.randint(1, 10) >= 7 else False
+    # verdict = True if random.randint(1, 10) >= 7 else False
     return verdict
 
 def filter_out(response_candidates, contexts):
-    debug = False
+    debug = True
 
     ntask = len(response_candidates)
     nbeam = len(response_candidates[0])
@@ -334,12 +339,12 @@ def filter_out(response_candidates, contexts):
 
     # cross-claims
     for i, beam_texts in enumerate(response_candidates):
-        for j, claim in enumerate(beam_texts):
+        for j, claim1 in enumerate(beam_texts):
             for m, beam_texts in enumerate(response_candidates):
-                for n, doc in enumerate(beam_texts):
+                for n, claim2 in enumerate(beam_texts):
                     if i == m and j == n:
                         continue
-                    virdicts[i][j] = fact_check(claim, doc)
+                    virdicts[i][j] = fact_check(claim1, claim2)
     if debug: print('After cross-claim', virdicts)
 
     # cross-domain
