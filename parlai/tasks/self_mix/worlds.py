@@ -259,11 +259,7 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][0] = agents[i][0].act()
-                # print("acts[i][0]['beam_texts'][0]", acts[i][0]['beam_texts'][0])
-                # input()
-                print('act[i][0]', acts[i][0])
-                input()
-                response_candidates.append(acts[i][0]['beam_texts'][0])
+                response_candidates.append(acts[i][0]['beam_texts'])
 
             # Leaders debate
             verdict = filter_out(response_candidates, self.documents)
@@ -288,7 +284,7 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][1] = agents[i][1].act()
-                response_candidates.append(acts[i][1]['beam_texts'][0])
+                response_candidates.append(acts[i][1]['beam_texts'])
 
             # Followers debate
             verdict = filter_out(response_candidates, self.documents)
@@ -318,9 +314,6 @@ def fact_check(claim, doc) -> bool:
     ROBERTA.eval()
 
     with torch.no_grad():
-        print('claim', claim)
-        print('doc', doc)
-        input()
         tokens = ROBERTA.encode(claim, doc)
         score = ROBERTA.predict('mnli', tokens) # [contradict, neutral, entailment]
         prediction = score.argmax().item()
@@ -340,19 +333,20 @@ def filter_out(response_candidates, contexts):
     nbeam = len(response_candidates[0])
     virdicts = [[True] * nbeam for _ in range(ntask)]
 
+    
     # cross-claims
-    for i, beam_texts in enumerate(response_candidates):
-        for j, claim1 in enumerate(beam_texts):
-            for m, beam_texts in enumerate(response_candidates):
-                for n, claim2 in enumerate(beam_texts):
-                    if i == m and j == n:
+    for i, beam_texts1 in enumerate(response_candidates):
+        for j, (claim1, _score1) in enumerate(beam_texts1):
+            for m, beam_texts2 in enumerate(response_candidates):
+                for n, (claim2, _score2) in enumerate(beam_texts2):
+                    if i == m:
                         continue
-                    virdicts[i][j] = fact_check(claim1, claim2)
+                    virdicts[i][j] &= fact_check(claim1, claim2)
     if debug: print('After cross-claim', virdicts)
 
     # cross-domain
     for i, beam_texts in enumerate(response_candidates):
-        for j, claim in enumerate(beam_texts):
+        for j, (claim, _score) in enumerate(beam_texts):
             for m, context_pair in enumerate(contexts):
                 for n, context in enumerate(context_pair):
                     if i == m or not context:
@@ -361,11 +355,11 @@ def filter_out(response_candidates, contexts):
     if debug: print('After cross-domain', virdicts)
     
     # guard no suggestion from a certain expertise
+    # TODO sorting해서 제일 높은 거 짜야함, 지금은 모든 best claim True로 바꿔주고만 있음.
     for i, beam_texts in enumerate(response_candidates):
-        for j, claim in enumerate(beam_texts):
+        for j, (claim, _score) in enumerate(beam_texts):
             if not any([virdicts[i][j] for i in range(ntask) for j in range(nbeam)]):
                 virdicts[i][0] = True
-                break
 
     if debug: print('Guarding cross-outs', virdicts)
 
