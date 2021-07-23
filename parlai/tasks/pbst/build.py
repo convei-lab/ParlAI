@@ -482,8 +482,8 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, 
             retrieved_doc.append(retrieved['dialog'][0][1]['text'])
 
         print('*'*5, "Contextual Alignment Example", '*'*5)
-        print("query", seed_queries[0])
-        print("document", retrieved_doc[0])
+        print("Query", seed_queries[0])
+        print("Document", retrieved_doc[0])
         print()
 
     return retrieved_doc

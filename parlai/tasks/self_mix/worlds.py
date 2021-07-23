@@ -24,7 +24,7 @@ def load_openers(opt) -> Optional[List[str]]:
     print('[ loading conversation openers... ]')
     # create dummy task so we can get openers from the data
     task_opt = copy.deepcopy(opt)
-    task_opt['task'] = base_task
+    task_opt['task'] = base_task + ':SeedTeacher'
 
     # default train will loop forever, but evalmode will stop after one epoch
     datatype = task_opt['datatype']
@@ -115,9 +115,12 @@ class SelfMixWorld(TeamDebateWorld):
         """
         Reset all agents in the world, and world statistics.
         """
-        for (leader, follower) in self.agents:
-            leader.reset()
-            follower.reset()
+        # for (leader, follower) in self.agents:
+        #     leader.reset()
+        #     follower.reset()
+        for team in self.agents:
+            for agent in team:
+                agent.reset()
         self.max_exs = None
         self.total_exs = 0
         self.total_epochs = 0
@@ -183,7 +186,7 @@ class SelfMixWorld(TeamDebateWorld):
                     agents[i][j].reset()
 
         if debug:
-            print('episode_cnt', self.episode_cnt)
+            print('\nepisode_cnt', self.episode_cnt)
             print('turn_cnt', self.turn_cnt)
             # print('agents', self.agents)
 
@@ -210,7 +213,7 @@ class SelfMixWorld(TeamDebateWorld):
                     )
                     self.acts[i][j] = context
                     self.agents[i][j].observe(validate(context))
-                    if debug: print(f'self.act[{i}][{j}]', self.acts[i][j]) 
+                    if debug: print(f'context[{i}][{j}]', self.acts[i][j]) 
             # clear contexts so they are only added once per episode
             self.documents = copy.deepcopy(self.contexts)
             self.contexts = None
@@ -237,10 +240,10 @@ class SelfMixWorld(TeamDebateWorld):
                             self.agents[i][j].self_observe(self.acts[i][j])
                     else:
                         self.acts[i][j] = self.agents[i][j].act()
-                    self.agents[i][1 - j].observe(validate(self.acts[i][j]))
-                    if debug: print(f'self.acts[{i}][{j}]', self.acts[i][j])
+                    self.agents[i][1 - j].observe(validate(self.acts[i][j])) # observing the opponent's seed utterance
+                    if debug: print(f'seed uttererance pairs [{i}][{j}]', self.acts[i][j])
             if debug:
-                input('Episode initialized\n')
+                input('\nContexts and seeds are initialized. Starting bot2bot conversation.\n')
         else:
             # do regular loop
             acts = self.acts
