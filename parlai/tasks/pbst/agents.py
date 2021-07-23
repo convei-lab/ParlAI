@@ -30,6 +30,7 @@ def _generated_data_path(opt: Opt) -> str:
     build(opt)
     dt = opt['datatype'].split(':')[0]
     return os.path.join(opt['datapath'], 'pbst', f'machine_generated.txt')
+
 class PBSTTeacher(ParlAIDialogTeacher):
     def __init__(self, opt, shared=None):
         build(opt)
@@ -52,6 +53,15 @@ class SelfmixTeacher(PBSTTeacher):
 
         super().__init__(opt, shared)
 
+class SeedTeacher(ParlAIDialogTeacher):
+    def __init__(self, opt, shared=None):
+
+        build(opt)
+        opt = copy.deepcopy(opt)
+        # # get datafile
+        opt['parlaidialogteacher_datafile'] = _processed_data_path(opt)
+        super().__init__(opt, shared)
+        
 class DefaultTeacher(ParlAIDialogTeacher):
     def __init__(self, opt, shared=None):
 
@@ -61,10 +71,10 @@ class DefaultTeacher(ParlAIDialogTeacher):
         opt['parlaidialogteacher_datafile'] = _generated_data_path(opt)
         super().__init__(opt, shared)
 
-
-def create_agents(opt):
-    if not opt.get('interactive_task', False):
-        return create_task_agent_from_taskname(opt)
-    else:
-        # interactive task has no task agents (they are attached as user agents)
-        return []
+# TODO why did I keep this code?
+# def create_agents(opt):
+#     if not opt.get('interactive_task', False):
+#         return create_task_agent_from_taskname(opt)
+#     else:
+#         # interactive task has no task agents (they are attached as user agents)
+#         return []

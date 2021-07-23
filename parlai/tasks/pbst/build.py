@@ -471,19 +471,16 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, 
         retrieval_result = []
         for json_str in json_list:
             result = json.loads(json_str)
-            if 'text' not in result:
-                result['text'] = ''
-                result['candidate_ids'] = []
-                result['text_candidates'] = [] 
-                result['candidate_scores'] = []
+            if 'text' not in result['dialog'][0][1]:
+                result['dialog'][0][1]['text'] = ''
             retrieval_result.append(result)
 
         for retrieved in retrieval_result:
             retrieved_doc.append(retrieved['dialog'][0][1]['text'])
 
         print('*'*5, "Contextual Alignment Example", '*'*5)
-        print("query", seed_queries[0])
-        print("document", retrieved_doc[0])
+        print("Query", seed_queries[0])
+        print("Document", retrieved_doc[0])
         print()
 
     return retrieved_doc
