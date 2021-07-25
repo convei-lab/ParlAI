@@ -11,7 +11,7 @@ class TopicInferenceTeacher(DialogTeacher):
         self.datatype = opt['datatype']
         build(opt)  # NOTE: the call to build here
         dt = opt['datatype'].split(':')[0]
-        opt['datafile'] = os.path.join(opt['datapath'], 'topic_inference', dt + '.json')
+        opt['datafile'] = os.path.join(opt['datapath'], 'pbst', 'contextual_alignment', 'topic_inference', dt + '.json')
         self.id = 'topic_inference'
         super().__init__(opt, shared)
 
@@ -35,5 +35,5 @@ class TopicInferenceTeacher(DialogTeacher):
 class DefaultTeacher(TopicInferenceTeacher):
     pass
 
-class RetrievalTeacher(TopicInferenceTeacher):
+class LexicalRetrievalTeacher(TopicInferenceTeacher):
     pass

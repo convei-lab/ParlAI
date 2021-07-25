@@ -11,7 +11,7 @@ class EmotionInferenceTeacher(DialogTeacher):
         self.datatype = opt['datatype']
         build(opt)  # NOTE: the call to build here
         dt = opt['datatype'].split(':')[0]
-        opt['datafile'] = os.path.join(opt['datapath'], 'emotion_inference', dt + '.json')
+        opt['datafile'] = os.path.join(opt['datapath'], 'pbst', 'contextual_alignment', 'emotion_inference', dt + '.json')
         self.id = 'emotion_inference'
         super().__init__(opt, shared)
 
@@ -35,5 +35,5 @@ class EmotionInferenceTeacher(DialogTeacher):
 class DefaultTeacher(EmotionInferenceTeacher):
     pass
 
-class RetrievalTeacher(EmotionInferenceTeacher):
+class LexicalRetrievalTeacher(EmotionInferenceTeacher):
     pass

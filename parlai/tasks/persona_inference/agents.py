@@ -11,7 +11,7 @@ class PersonaInferenceTeacher(DialogTeacher):
         self.datatype = opt['datatype']
         build(opt)  # NOTE: the call to build here
         dt = opt['datatype'].split(':')[0]
-        opt['datafile'] = os.path.join(opt['datapath'], 'persona_inference', dt + '.json')
+        opt['datafile'] = os.path.join(opt['datapath'], 'pbst', 'contextual_alignment', 'persona_inference', dt + '.json')
         self.id = 'persona_inference'
         super().__init__(opt, shared)
 
@@ -36,5 +36,5 @@ class PersonaInferenceTeacher(DialogTeacher):
 class DefaultTeacher(PersonaInferenceTeacher):
     pass
 
-class RetrievalTeacher(PersonaInferenceTeacher):
+class LexicalRetrievalTeacher(PersonaInferenceTeacher):
     pass

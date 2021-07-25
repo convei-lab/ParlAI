@@ -115,7 +115,15 @@ def _convai_parser(filepath
     # Collecting
     persona1, persona2, seed_pair = [], [], None
     episode_done = False
-    # TODO handle __SILENCE__ seeds there are so many!
+    
+    def roleswap(persona_list):
+        for i, persona_sent in enumerate(persona_list):
+            if persona_sent.startswith("partner's persona: "):
+                persona_list[i] = persona_sent.replace("partner's persona: ", "your persona: ")
+            else:
+                persona_list[i] = persona_sent.replace("your persona: ", "partner's persona: ")
+        return persona_list
+    
     for i, line in enumerate(lines):
         if debug and i < 50:
             print('Line', i, line) # for debug
@@ -127,16 +135,23 @@ def _convai_parser(filepath
         elif not episode_done:
             seed_pair = line.split('\t')
             assert len(seed_pair) == 2
-            leading_contexts.append('\n'.join(persona1)) 
-            following_contexts.append('\n'.join(persona2))
-            seed_list.append(seed_pair)
+            if seed_pair[0] == '__SILENCE__':
+                nextline = lines[i+1]
+                nextpair = nextline.split('\t')
+                seed_list.append([seed_pair[1], nextpair[0]])
+                leading_contexts.append('\n'.join(roleswap(persona2))) 
+                following_contexts.append('\n'.join(roleswap(persona1)))
+                # print(seed_list[-1]) for roleswap debug
+                # print(leading_contexts[-1])
+                # print(following_contexts[-1])
+                # input()
+            else:
+                seed_list.append(seed_pair)
+                leading_contexts.append('\n'.join(persona1)) 
+                following_contexts.append('\n'.join(persona2))
             responses.extend([seed_pair[0], seed_pair[1]])
             episode_done = True
             persona1, persona2, seed_pair = [], [], []
-            # print(person1_list[-1]) # for debug
-            # print(person2_list[-1])
-            # print(seed_list[-1])
-            # input()
         else:
             utt_pair = line.split('\t')
             responses.extend([utt_pair[0], utt_pair[1]])
@@ -339,20 +354,22 @@ def _parse_task_dataset(subtask, subtaskpath
         responses.extend(fresponses)
     return leading_contextss, following_contextss, seeds, responses
 
-def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, subtaskpath):
-
+def _retrieve_contextual_document(seed_queries, contextual_docs, teacher, origin, target, subtaskpath):
+    '''
+        retreival: query (seed utterances) -> document (contexts)
+    '''
     retrieved_doc = []
 
     # Semantic Retreival (e.g. poly-encoder, DPR)
-    if mode == 'semantic':
+    if teacher == 'semantic':
         parlai_data_path = subtaskpath[:subtaskpath.find('pbst')]
 
         opt = {}
-        if subtask == 'convai2':
+        if target == 'convai2':
             opt['task'] = 'persona_inference:retrieval'
-        elif subtask == 'wizard_of_wikipedia':
+        elif target == 'wizard_of_wikipedia':
             opt['task'] = 'topic_inference:retrieval'
-        elif subtask == 'empatheticdialogues':
+        elif target == 'empatheticdialogues':
             opt['task'] = 'emotion_inference:retrieval'
         else:
             raise RuntimeError('Unimplemented subtask')
@@ -384,7 +401,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, 
             # input_dict = {'text': query, 'label_candidates': candidates}
             input_dict = {'text': query, 'labels': candidates[0]}
             eval_list.append(input_dict)
-
+            
         with open(parlai_data_path + split[0] + '/retrieval.json', "w") as json_file:
             json.dump(eval_list, json_file)
         print("Saved queries to", parlai_data_path + split[0] + '/retrieval.json')
@@ -406,7 +423,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, 
             retrieved_doc.append(retrieved['dialog'][0][1]['text'])
 
     # Random Retrieval
-    elif mode == 'random':
+    elif teacher == 'random':
         doc_ids = list(range(len(contextual_docs)))
         retrieved_doc_idx = random.choices(doc_ids, k=len(seed_queries))
         retrieved_doc = contextual_docs[retrieved_doc_idx]
@@ -414,76 +431,81 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, mode, subtask, 
     # TODO Manual Retrieval (e.g. BST -> 이 경우 context가 좀 더 단순해져야 한다. 현재 leading/following 불필요)
 
     # Lexical Retrieval??
-    elif mode == 'lexical':
+    elif teacher == 'lexical_retrieval':
 
-        parlai_data_path = subtaskpath[:subtaskpath.find('pbst')]
-
-        tr_opt = {}
-        if subtask == 'convai2':
-            tr_opt['task'] = 'persona_inference:retrieval'
-        elif subtask == 'wizard_of_wikipedia':
-            tr_opt['task'] = 'topic_inference:retrieval'
-        elif subtask == 'empatheticdialogues':
-            tr_opt['task'] = 'emotion_inference:retrieval'
-        else:
-            raise RuntimeError('Unimplemented subtask')
-
-        tfidftask, _meanswhat = tr_opt['task'].split(':') # TODO what is ":retrieval" supposed to mean?
+        parlai_data_path = subtaskpath[:subtaskpath.find('/pbst')]
+        src2trg = f'{origin}->{target}'
 
         # Loading TF-IDF Retriever Model
+        tr_opt = {}
+        if target.startswith('convai2'):
+            task = 'persona_inference'
+        elif target.startswith('wizard_of_wikipedia'):
+            task = 'topic_inference'
+        elif target.startswith('empatheticdialogues'):
+            task = 'emotion_inference'
+        else:
+            raise RuntimeError('Unimplemented retrieval task')
+        tr_opt['task'] = f'{task}:{teacher}'
         tr_opt['model'] = 'tfidf_retriever'
-        tr_opt['model_file'] = f'{subtaskpath}/tfidf_retriever/model'
+        tr_opt['model_file'] = f'{parlai_data_path}/pbst/contextual_alignment/{task}/{teacher}/model'
         tr_opt['eval_candidates'] = 'inline'
         tr_opt['fixed_candidates_path'] = None
         tr_opt['batchsize'] = 256
-        tr_opt['datatype'] = 'retrieval'
-        tr_opt['label_candidates_file'] = parlai_data_path + tfidftask + '/fixed_candidates.txt'
-        tr_opt['world_logs'] = parlai_data_path + tfidftask + '/retrieval_report.json'
-        tr_opt['report_filename'] = parlai_data_path + tfidftask + '/retrieval_report.json'
+        tr_opt['datatype'] = f'{teacher}/{src2trg}/query'
+        tr_opt['label_candidates_file'] = f'{parlai_data_path}/pbst/contextual_alignment/{task}/fixed_candidates.txt'
+        tr_opt['world_logs'] = f'{parlai_data_path}/pbst/contextual_alignment/{task}/{teacher}/{src2trg}/results.jsonl'
+        tr_opt['report_filename'] = f'{parlai_data_path}/pbst/contextual_alignment/{task}/{teacher}/{src2trg}/model_report.json'
         tr_opt['log_keep_fields'] = 'all'
         tr_opt['num_examples'] = -1
         tr_opt['display_examples'] = False
         tr_opt['save_format'] = 'conversations'
-
+        
+        # prepare candidate for the retrieval, which are contextual documents
+        # TODO 민주는 fixed candidates을 leading following 다 뭉쳐놨다. 나는 분리할 줄 알았다. 이 둘을 구분하는 것은 안 중요한가?
+        with open(tr_opt['label_candidates_file'], 'r') as f:
+            candidates = f.readlines()
+        
+        # prepare queries of the retireval, which are the seed utterances
         eval_list = []
-        candidates_path = parlai_data_path + tfidftask + '/fixed_candidates.txt'
-        f = open(candidates_path, 'r')
-        candidates = f.readlines()
-        f.close()
-
         for query in seed_queries:
             # input_dict = {'text': query, 'labels': candidates[0], 'label_candidates': candidates}
             input_dict = {'text': query, 'labels': candidates[0]}
             eval_list.append(input_dict)
-
-        with open(parlai_data_path + tfidftask + '/retrieval.json', "w") as json_file:
+        
+        # save the queries as files
+        retrieval_query_path = f'{parlai_data_path}/pbst/contextual_alignment/{task}/{teacher}/{src2trg}/query.json'
+        retrieval_dirpath = retrieval_query_path.rsplit('/', 1)[0]
+        if os.path.exists(retrieval_dirpath):
+            build_data.remove_dir(retrieval_dirpath)
+        build_data.make_dir(retrieval_dirpath)
+        with open(retrieval_query_path, "w+") as json_file:
             json.dump(eval_list, json_file)
-        print("Saved queries to", parlai_data_path + tfidftask + '/retrieval.json')
+        print("Saved queries to", retrieval_query_path)
  
+        # run parali retreival task, which then saves the retrieval results in as a 'world_logs' file
         eval_model(tr_opt)
 
-        # Open retrieval result (jsonl file)
-        retrieval_result_path = tr_opt['report_filename'] + 'l'
-
-        with open(retrieval_result_path, 'r') as json_file:
+        # load retrieval result (as in jsonl file) to read and return the retrieved documents
+        with open(tr_opt['world_logs'], 'r') as json_file:
             json_list = list(json_file)
 
         retrieval_result = []
         for json_str in json_list:
             result = json.loads(json_str)
             if 'text' not in result['dialog'][0][1]:
-                result['dialog'][0][1]['text'] = ''
-                result['dialog'][0][1]['candidate_ids'] = []
-                result['dialog'][0][1]['text_candidates'] = [] 
-                result['dialog'][0][1]['candidate_scores'] = []
+                result['dialog'][0][1]['text'] = ""
+                # result['dialog'][0][1]['candidate_ids'] = []
+                # result['dialog'][0][1]['text_candidates'] = [] 
+                # result['dialog'][0][1]['candidate_scores'] = []
             retrieval_result.append(result)
 
         for retrieved in retrieval_result:
             retrieved_doc.append(retrieved['dialog'][0][1]['text'])
 
         print('*'*5, "Contextual Alignment Example", '*'*5)
-        print("Query", seed_queries[0])
-        print("Document", retrieved_doc[0])
+        print("Query:", seed_queries[0])
+        print("Retreived Document:", retrieved_doc[0])
         print()
 
     return retrieved_doc
@@ -543,8 +565,8 @@ def _build_context_and_response(opt, subtaskpaths):
                 following_contexts = following_context_dic[target]
                 # Retrieve contextual document from different task
                 # And align the seed with all the other subtask's context
-                lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical', target, subtaskpath)
-                fcm[i][j] = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical', target, subtaskpath)
+                lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                fcm[i][j] = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical_retrieval', origin, target+'_2', subtaskpath)
     
     context = []
 
