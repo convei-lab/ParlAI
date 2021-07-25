@@ -13,6 +13,8 @@ from parlai.core.agents import Agent
 from parlai.core.worlds import create_task, TeamDebateWorld, validate
 from parlai.core.message import Message
 import torch
+import numpy as np
+
 ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli')
 
 def load_openers(opt) -> Optional[List[str]]:
@@ -172,8 +174,8 @@ class SelfMixWorld(TeamDebateWorld):
         return actions   
 
     def parley(self):
-        debug = True
-        subtasks = ['convai2', 'wizardofwikipedia', 'emphatheticdialogues']
+        debug = False
+        subtasks = ['convai2', 'wizardofwikipedia', 'emphatheticdialogues'] # TODO Handle this! it may not always be three tasks
 
         if self.episode_done():
             self.turn_cnt = 0
@@ -194,11 +196,11 @@ class SelfMixWorld(TeamDebateWorld):
             self.acts = [[None] * 2 for _ in range(self.nsubtask)]
             # get the beginning of the conversation, which can include contexts
             # and/or any number of starting messages
-            self.contexts = self.get_contexts(self.episode_cnt)
+            self.contexts = np.array(self.get_contexts(self.episode_cnt))
             self.seed_utterances = self._get_seed_utt_acts(
                 self.episode_cnt, self.agents
             )
-        if self.contexts:
+        if self.contexts is not None:
             assert len(self.contexts) == self.nsubtask
 
             # for i, pair in enumerate(self.contexts):
@@ -233,17 +235,36 @@ class SelfMixWorld(TeamDebateWorld):
             for i in range(len(self.agents)):
                 for j in [0, 1]: # leading utterance and following utterance
                 # as we have a seed utterance, add it to the conversation
-                    if len(utts[0]) > j:
-                        self.acts[i][j] = utts[i][j]
+                    # if len(utts[0]) > j: # 2 > [0, 1] <- j is always smaller than 2
+                    #     self.acts[i][j] = utts[i][j] # [0, 1, 2][0, 1]
+                    #     if hasattr(self.agents[i][j], 'self_observe'):
+                    #         self.agents[i][j].observe({'episode_done': False})
+                    #         self.agents[i][j].self_observe(self.acts[i][j]) # this observes it's own uttereance
+                    # else:
+                    #     self.acts[i][j] = self.agents[i][j].act() # if j is bigger than 2, but never happens
+                    # self.agents[i][1 - j].observe(validate(self.acts[i][j])) # observing the opponent's seed utterance
+
+                    # TODO 버그의 냄새가 난다. self.agents의 observe 로그를 볼수 있나? 확인해서 seed 잘 봤는지 봐야한다.
+                    self.acts[i][j] = utts[i][j]
+                    if j == 0:
                         if hasattr(self.agents[i][j], 'self_observe'):
                             self.agents[i][j].observe({'episode_done': False})
-                            self.agents[i][j].self_observe(self.acts[i][j])
+                            self.agents[i][j].self_observe(self.acts[i][j]) # this observes it's own uttereance
+                        else:
+                            self.acts[i][j] = self.agents[i][j].act() 
+                        self.agents[i][1 - j].observe(validate(self.acts[i][j])) # observing the opponent's seed utterance
                     else:
-                        self.acts[i][j] = self.agents[i][j].act()
-                    self.agents[i][1 - j].observe(validate(self.acts[i][j])) # observing the opponent's seed utterance
+                        self.agents[i][1 - j].observe(validate(self.acts[i][j])) # observing the opponent's seed utterance
+                        if hasattr(self.agents[i][j], 'self_observe'):
+                            self.agents[i][j].observe({'episode_done': False})
+                            self.agents[i][j].self_observe(self.acts[i][j]) # this observes it's own uttereance
+                        else:
+                            self.acts[i][j] = self.agents[i][j].act() 
+                    
                     if debug: print(f'seed uttererance pairs [{i}][{j}]', self.acts[i][j])
             if debug:
-                input('\nContexts and seeds are initialized. Starting bot2bot conversation.\n')
+                print('\nContexts and seeds are initialized. Starting bot2bot conversation.\n')
+            # TODO ED의 context가 이상하다. -> opener나 alignment가 이상하다
         else:
             # do regular loop
             acts = self.acts
@@ -259,63 +280,89 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][0] = agents[i][0].act()
+                assert len(acts[i][0]['beam_texts']) == 3
                 response_candidates.append(acts[i][0]['beam_texts'])
-
+            if debug: input('Leaders actioned\n')
+            
             # Leaders debate
-            verdict = filter_out(response_candidates, self.documents)
-            decision = decide_action(response_candidates, verdict)
-            for i in range(len(self.agents)):
-                acts[i][0].force_set('decision', '0')
-                acts[i][0].force_set('verdict', ','.join([str(int(v)) for v in verdict[i]]))
-            acts[decision][0].force_set('decision', '1')
-
-            # Followers observe
-            for i in range(len(self.agents)):
-                agents[i][1].observe(validate(acts[decision][0]))
+            verdicts = filter_out(response_candidates, self.documents[:,0]) # TODO provide only leader's context
+            decisions = decide(response_candidates, verdicts)
+            for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
+                acts[i][0].force_set('verdict', ','.join(list(map(str, verdict))))
+                acts[i][0].force_set('decision', ','.join(list(map(str, decision))))
+            if debug: input('Leaders debated\n')
             
             if debug: 
-                for i in range(len(self.agents)):
-                    for j in [0]:
-                        print(f'self.acts[{i}][{j}]', self.acts[i][j])
-                print(f'Decision: {decision}', acts[decision][0])
-                input('Leaders actioned & followers observed\n')
+                for i in range(len(self.agents)): print(f'self.acts[{i}][0]', self.acts[i][0], end='\n\n')
+                input('Before decision updates\n')
+            
+            for i, task in enumerate(decisions):
+                for j, decision in enumerate(task):
+                    if decision == 1:
+                        acts[i][0].force_set('text', response_candidates[i][j][0])
+                        if debug: print(f'\n ***The final decision is :{acts[i][0]["text"]}***\n')
+            if debug:
+                print('Decision Matrix', decisions)
+                input('Updated leaders\' decision')
+            
+            if debug: 
+                for i in range(len(self.agents)): print(f'self.acts[{i}][0]', self.acts[i][0], end='\n\n')
+                input('After decision updates\n')
                 
+            # Followers observe
+            for i in range(len(self.agents)):
+                agents[i][1].observe(validate(acts[i][0]))
+            if debug: input('Followers observed\n')
+            ### ================== turn switching =================== ###
             # Followers action
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][1] = agents[i][1].act()
+                assert len(acts[i][1]['beam_texts']) == 3
                 response_candidates.append(acts[i][1]['beam_texts'])
+            if debug: input('Followers actioned\n')
 
             # Followers debate
-            verdict = filter_out(response_candidates, self.documents)
-            decision = decide_action(response_candidates, verdict)
-            for i in range(len(self.agents)):
-                acts[i][1].force_set('decision', '0')
-                acts[i][1].force_set('verdict', ','.join([str(int(v)) for v in verdict[i]]))
-            acts[decision][1].force_set('decision', '1')
-
-            # leaders observe
+            verdicts = filter_out(response_candidates, self.documents[:,1])
+            decisions = decide(response_candidates, verdicts)
+            for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
+                acts[i][1].force_set('verdict', ','.join(list(map(str, verdict))))
+                acts[i][1].force_set('decision', ','.join(list(map(str, decision))))
+            if debug: input('Followers debated\n')
+            
+            if debug: 
+                for i in range(len(self.agents)): print(f'self.acts[{i}][1]', self.acts[i][1], end='\n\n')
+                input('Before decision updates\n')
+            
+            for i, task in enumerate(decisions):
+                for j, decision in enumerate(task):
+                    if decision == 1:
+                        acts[i][1].force_set('text', response_candidates[i][j][0])
+                        if debug: print(f'\n ***The final decision is :{acts[i][1]["text"]}***\n')
+            if debug:
+                print('Decision Matrix', decisions)
+                input('Updated followers\' decision')
+            
+            if debug: 
+                for i in range(len(self.agents)): print(f'self.acts[{i}][1]', self.acts[i][1], end='\n\n')
+                input('After decision updates\n')
+                
+            # Leaders observe
             for i in range(len(self.agents)):
                 # agents[i][0].observe(validate(decision))
                 agents[i][0].observe(validate(acts[decision][1]))
-            
-            if debug: 
-                for i in range(len(self.agents)):
-                    for j in [1]:
-                        print(f'self.acts[{i}][{j}]', self.acts[i][j])
-                print(f'Decision: {decision}', acts[decision][1])
-                input('Followers actioned & leaders observed\n')
+            if debug: input('Leaders observed\n')
+
         self.update_counters()
         self.turn_cnt += 1
 
-def fact_check(claim, doc) -> bool:
-    # TODO sentence-pair NLI for fact check
-    # random decision
+def fact_check(premise, hypotheis) -> bool:
+    # sentence-pair NLI for fact check
     ROBERTA.eval()
-
     with torch.no_grad():
-        tokens = ROBERTA.encode(claim, doc)
-        score = ROBERTA.predict('mnli', tokens) # [contradict, neutral, entailment]
+        # label_map = {0: 'contradiction', 1: 'neutral', 2: 'entailment'}
+        tokens = ROBERTA.encode(premise, hypotheis)
+        score = ROBERTA.predict('mnli', tokens)
         prediction = score.argmax().item()
     
     if prediction == 0:
@@ -323,57 +370,119 @@ def fact_check(claim, doc) -> bool:
     else:
         verdict = True
 
+    # random decision
     # verdict = True if random.randint(1, 10) >= 7 else False
     return verdict
 
 def filter_out(response_candidates, contexts):
-    debug = True
+    debug = False
+    short = False
 
     ntask = len(response_candidates)
     nbeam = len(response_candidates[0])
-    virdicts = [[True] * nbeam for _ in range(ntask)]
+    virdicts = [[1] * nbeam for _ in range(ntask)]
 
     
-    # cross-claims
+    subtasks = ['convai2', 'wizardofwikipedia', 'emphatheticdialogues']
+    
+    # Cross-domain first, regarding them as more reliable filtering than cross-claim fact-checking
+    if debug or short: cnt = 0
+    # for i, context_pair in enumerate(contexts):
+    #     for j, context in enumerate(context_pair): # TODO Decide whether we comapr a claim to both leading/following contexts
+    for i, context in enumerate(contexts):
+        for m, beam_texts in enumerate(response_candidates):
+            for n, (claim, _score) in enumerate(beam_texts):
+                if debug or short: cnt += 1
+                if virdicts[m][n]:
+                    if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]} {subtasks[m]}-{n}')
+                    if debug: print('Context', context)
+                    if debug: print('Claim', claim)
+                    if not context or not claim:
+                        virdicts[m][n] = False
+                        continue
+                    if i == m:
+                        if debug: print()
+                        continue
+                    if debug: print('Virdict', virdicts[m][n])
+                    if debug: print()
+                    virdicts[m][n] &= fact_check(context, claim)
+                    if short: 
+                        # if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]} #{j+1}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
+                        if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
+    if debug or short: print('Virdicts after cross-domain', virdicts, '\n')
+    
+    # Cross-claims
+    if debug or short: cnt = 0
     for i, beam_texts1 in enumerate(response_candidates):
         for j, (claim1, _score1) in enumerate(beam_texts1):
             for m, beam_texts2 in enumerate(response_candidates):
                 for n, (claim2, _score2) in enumerate(beam_texts2):
-                    if i == m:
-                        continue
-                    virdicts[i][j] &= fact_check(claim1, claim2)
-    if debug: print('After cross-claim', virdicts)
+                    if debug or short: cnt += 1
+                    if virdicts[m][n]:
+                        if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]}-{j} {subtasks[m]}-{n}')
+                        if debug: print('Claim1', claim1)
+                        if debug: print('Claim2', claim2)
+                        if not claim1 or not claim2:
+                            virdicts[m][n] = False
+                            continue
+                        if i == m:
+                            if debug: print()
+                            continue
+                        if debug: print('Virdict', virdicts[m][n])
+                        if debug: print()
+                        virdicts[m][n] &= fact_check(claim1, claim2)
+                        if short: 
+                            if virdicts[m][n] == False: print(f'Cross-claim contradiction on fact-checking #{cnt}\nClaim1 - {subtasks[i]} #{j+1}:\n{claim1}\nClaim2 - {subtasks[m]} #{n+1}:\n\t{claim2} => Filtered Out\n')
+    if debug or short: print('Virdicts after cross-claim', virdicts, '\n')
 
-    # cross-domain
-    for i, beam_texts in enumerate(response_candidates):
-        for j, (claim, _score) in enumerate(beam_texts):
-            for m, context_pair in enumerate(contexts):
-                for n, context in enumerate(context_pair):
-                    if i == m or not context:
-                        continue
-                    virdicts[i][j] &= fact_check(claim, context)
-    if debug: print('After cross-domain', virdicts)
-    
-    # guard no suggestion from a certain expertise
-    # TODO sorting해서 제일 높은 거 짜야함, 지금은 모든 best claim True로 바꿔주고만 있음.
-    for i, beam_texts in enumerate(response_candidates):
-        for j, (claim, _score) in enumerate(beam_texts):
-            if not any([virdicts[i][j] for i in range(ntask) for j in range(nbeam)]):
-                virdicts[i][0] = True
-
-    if debug: print('Guarding cross-outs', virdicts)
+    # Getting the agreements for dialogue consistency
+    if debug or short:
+        agreements = [response_candidates[i][j][0] for i, task in enumerate(virdicts) for j, virdic in enumerate(task) if virdic == 1]
+        print("\nExpert's Agreements")
+        print('\n'.join(agreements)) if agreements else print('None')
+        print()
 
     return virdicts
 
-def decide_action(actions, virdicts):
+def decide(response_candidates, virdicts):
+    debug = False
+    
+    ntask = len(virdicts)
+    nbeam = len(virdicts[0])
+    
+    decimat = [[0] * nbeam for _ in range(ntask)]
 
-    # TODO somehow select 
-    decision = random.randint(0, len(virdicts)-1)
+    # guard no suggestion from a certain expertise
+    vmat = np.array(virdicts)
+    zero_agreement = not any([virdicts[i][j] for i in range(ntask) for j in range(nbeam)])
+    if zero_agreement:
+        if debug: print('\nZero-agreement found')
+        for i, _task in enumerate(virdicts):
+            vmat[i][0] = 1
+        if debug: print('Guarding Zero-agreement with the virdicts', vmat, '\n')
 
-    # for i in range(len(virdicts[decision])):
-    #     if virdicts[i]:
-    #         final_response = actions[i] #  only the highest-scoring text (never a beam_texts, for now)
-    #         break
+    # Stochastic selection from non-contradictory claims
+    vprob = np.divide(vmat, vmat.sum())
+    idxlist = np.arange(vprob.size)
+    cholist = np.random.choice(idxlist, 1, p=vprob.flatten())
+    row, col = np.unravel_index(cholist.item(), vmat.shape) # convert the 1d index into 2d coordinates
+    decimat[row][col] = 1
+    
+    # TODO Deterministic selection from entaiment-weighted (scored) claims
+    
+    # for debug
+    # print('vprob', vprob)
+    # print('vmat.flatten()', vmat.flatten())
+    # print('vprob.flatten()', vprob.flatten())
+    # print('vprob.flatten()', np.sum(vprob.flatten()))
+    # print('index_1d', index_1d)
+    # print('choice_1d', choice_1d)
+    # print('choice_1d.item()', choice_1d.item())
+    # print('index', row, col)
+    if debug and zero_agreement:
+        print()
+        print('Team Decided')
+        print('The Final Decision', decimat)
+        print()
 
-
-    return decision
+    return decimat

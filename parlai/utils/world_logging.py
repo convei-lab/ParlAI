@@ -21,7 +21,8 @@ from parlai.core.message import Message
 
 import copy
 from tqdm import tqdm
-
+import json
+import random
 KEEP_ALL = 'all'
 
 
@@ -212,7 +213,7 @@ class DebateLogger(WorldLogger):
         self._current_episodes.setdefault(idx, [])
         self._current_episodes[idx].append(msgs)
 
-    def convert_to_labeled_data(self, episode, subtasks):
+    def convert_to_labeled_data(self, episode, subtasks, responses):
         """
         Write one episode into series of parl-ai format lines
         """
@@ -245,30 +246,36 @@ class DebateLogger(WorldLogger):
                         line['text'] = '\n'.join(text_lst)
                         line['labels'] = [second_act['text']]
                         line['partner_context'] = '\n'.join(partner_context) if partner_context else ''
+                        line['label_candidates'] = random.sample(responses, 100)
+                        line['label_candidates'][random.randrange(100)] = line['labels'][0]
                         for k, v in subtask_context.items(): line[k] = v
                         out.append(line)
                         if debug: print('*line*', line, '\n'); input()
                         text_lst = []
                         seeded = True
                 else: # utterance
-                    if first_act['decision'] == '1':
-                        line['id'] = first_act['id']
-                        text_lst.append(first_act['text'])
-                        line['context1_dataset'] = subtasks[j]
-                    if second_act['decision'] == '1':
-                        line['labels'] = [second_act['text']]
-                        line['context2_dataset'] = subtasks[j]
                     first_verdict = first_act['verdict'].split(',')
                     second_verdict = second_act['verdict'].split(',')
+                    first_decision = first_act['decision'].split(',')
+                    second_decision = second_act['decision'].split(',')
+                    if '1' in first_decision:
+                        line['id'] = first_act['id']
+                        text_lst.append(first_act['text'])
+                        line['expertise1'] = subtasks[j]
+                    if '1' in second_decision:
+                        line['labels'] = [second_act['text']]
+                        line['expertise2'] = subtasks[j]
                     suggestions1 = [[t, str(round(v, 2))] for t, v in first_act['beam_texts']]
                     suggestions2 = [[t, str(round(v, 2))] for t, v in second_act['beam_texts']]
                     for k in range(len(first_verdict)):
-                        line[f'suggestion1_{subtask}_{k}'] = ' '.join(suggestions1[k]) + f' (verdict: {first_verdict[k]})'
-                        line[f'suggestion2_{subtask}_{k}'] = ' '.join(suggestions2[k]) + f' (verdict: {second_verdict[k]})' 
+                        line[f'suggestion1_{subtask}_{k}'] = ' '.join(suggestions1[k]) + f' (verdict: {first_verdict[k]}, decision: {first_decision[k]})'
+                        line[f'suggestion2_{subtask}_{k}'] = ' '.join(suggestions2[k]) + f' (verdict: {second_verdict[k]}, decision: {second_decision[k]})' 
                 if debug: print(first_act); print(second_act); input()
             # In case of utterances, we collect the best while iteration.
             if second_act['id'] != 'context' and second_act['id'] != 'seed':
                 line['text'] = '\n'.join(text_lst)
+                line['label_candidates'] = random.sample(responses, 100)
+                line['label_candidates'][random.randrange(100)] = line['labels'][0]
                 out.append(line)
                 if debug: print('*line*', line, '\n'); input()
                 text_lst = []
@@ -317,22 +324,24 @@ class DebateLogger(WorldLogger):
                         text_lst = []
                         seeded = True
                 else: # utterance
-                    if first_act['decision'] == '1':
-                        line['id'] = first_act['id']
-                        text_lst.append(first_act['text'])
-                        line['context1_dataset'] = subtasks[j]
-                    if second_act['decision'] == '1':
-                        line['labels'] = [second_act['text']]
-                        line['context2_dataset'] = subtasks[j]
                     first_verdict = first_act['verdict'].split(',')
                     second_verdict = second_act['verdict'].split(',')
+                    first_decision = first_act['decision'].split(',')
+                    second_decision = second_act['decision'].split(',')
+                    if '1' in first_decision:
+                        line['id'] = first_act['id']
+                        text_lst.append(first_act['text'])
+                        line['expertise1'] = subtasks[j]
+                    if '1' in second_decision:
+                        line['labels'] = [second_act['text']]
+                        line['expertise2'] = subtasks[j]
                     suggestions1 = [[t, str(round(v, 2))] for t, v in first_act['beam_texts']]
                     suggestions2 = [[t, str(round(v, 2))] for t, v in second_act['beam_texts']]
                     for k in range(len(first_verdict)):
-                        line[f'suggestion1_{subtask}_{k}'] = ' '.join(suggestions1[k]) + f' (verdict: {first_verdict[k]})'
-                        line[f'suggestion2_{subtask}_{k}'] = ' '.join(suggestions2[k]) + f' (verdict: {second_verdict[k]})' 
+                        line[f'suggestion1_{subtask}_{k}'] = ' '.join(suggestions1[k]) + f' (verdict: {first_verdict[k]}, decision: {first_decision[k]})'
+                        line[f'suggestion2_{subtask}_{k}'] = ' '.join(suggestions2[k]) + f' (verdict: {second_verdict[k]}, decision: {second_decision[k]})' 
                 if debug: print(first_act); print(second_act); input()
-            # In case of utterances, we collect the best while iteration.
+            # We register the cached text & labels from the above task-wise iteration, colleted as dialogue histories.
             if second_act['id'] != 'context' and second_act['id'] != 'seed':
                 line['text'] = '\n'.join(text_lst)
                 out.append(line)
@@ -352,10 +361,17 @@ class DebateLogger(WorldLogger):
 
     def write_parlai_format(self, outfile, subtasks):
         logging.info(f'Saving log to {outfile} in ParlAI format')
+        
+        res_path = './data/pbst/responses_candidates.json'
+        with PathManager.open(res_path, 'r') as file:
+            responses = json.load(file)
+        
         ana_path = './data/pbst/machine_analysis.txt'
+        logging.info(f'Saving dataset to {ana_path} in for analysis')
+            
         with PathManager.open(outfile, 'w+') as fw, PathManager.open(ana_path, 'w+') as afw:
             for episode in tqdm(self._logs):
-                ep = self.convert_to_labeled_data(episode, subtasks)
+                ep = self.convert_to_labeled_data(episode, subtasks, responses)
                 for act in ep:
                     txt = msg_to_str(act)
                     fw.write(txt + '\n')

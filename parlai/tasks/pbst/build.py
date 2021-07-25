@@ -518,7 +518,7 @@ def _build_context_and_response(opt, subtaskpaths):
         print(f'Also, {len(responses)} response candidates were parsed from the {subtask}\n')
 
     # writing the maximum pool of response candidate sampled from each task datasets
-    response_candidates = np.array([response for response_set in response_candidates.values() for response in response_set])
+    response_candidates = np.array([response.strip() for response_set in response_candidates.values() for response in response_set])
     response_candidates = np.unique(response_candidates).tolist()
     rc = os.path.join(opt['datapath'], 'pbst', f'responses_candidates.json')
     with open(rc, 'w') as f:
