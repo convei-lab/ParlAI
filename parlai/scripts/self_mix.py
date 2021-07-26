@@ -9,7 +9,7 @@ Allows a model to self-chat on a given task.
 from parlai.core.params import ParlaiParser
 from parlai.core.agents import create_agent, create_agent_from_model_file
 from parlai.core.worlds import create_task
-from parlai.utils.world_logging import DebateLogger
+from parlai.tasks.self_mix.world_logging import DebateLogger
 from parlai.utils.misc import TimeLogger
 from parlai.core.script import ParlaiScript, register_script
 import parlai.utils.logging as logging
@@ -19,7 +19,7 @@ from parlai.core.loader import load_task_module, load_world_module
 import math
 import json
 import random
-
+import os
 
 def setup_args(parser=None):
     if parser is None:
@@ -76,7 +76,7 @@ def setup_args(parser=None):
         help='Comma-sperated list of subtasks for team debate'
     )
     parser.add_argument(
-        '--outfile', type=str, default=None, help='File to save self chat logs'
+        '--outfile', type=str, default=None, help='File to save self mix logs'
     )
     parser.add_argument(
         '--save-format',
@@ -116,31 +116,42 @@ def self_mix(opt):
     experts = opt['expert_model_files'].split(',')
     expert_opt_files = opt.get('expert_model_opt_files').split(',')
 
-
     # Create agents
     expert_agents = []
     for subtask, expert, expert_opt_file in zip(subtasks, experts, expert_opt_files):
-        opt['model_file'] = expert
-        leader = create_agent(opt, requireModelExists=True)
-        leader.opt.log(f"{subtask} Expert Leader Opt")
+        opt['model_file'] = expert_opt_files
+        model_pair = []
         if expert is None:
+            # TODO This needs handling
             # Self mix with same model, where leader and follower models interleave in turn for annotation
+            leader = create_agent(opt, requireModelExists=True)
             follower = leader.clone()
+            model_pair.append(leader)
+            model_pair.append(follower)
+            leader.opt.log(f"{subtask} Expert Leader Opt")
+            follower.opt.log(f"{subtask} Expert Leader Opt")
         else:
-            # Loading several models for mixingc hatbots
-            if expert_opt_files:
-                print(f"WARNING: Loading override opts from: {expert_opt_files}")
-                with PathManager.open(expert_opt_file) as f:
-                    expert_opt = json.load(f)
-            else:
-                expert_opt = {}
-            expert_opt['interactive_mode'] = opt.get('interactive_mode', True)
-            print(
-                f"WARNING: Setting expert interactive mode to: {expert_opt['interactive_mode']}"
-            )
-            follower = create_agent_from_model_file(expert, expert_opt)
-            follower.opt.log(f"{subtask} Expert Follower Opt")
-        expert_agents.append([leader, follower])
+            # Loading several models for mixing chatbots
+            for role in ['Leader', 'Follower']:
+                print('\n'*2)
+                print(f'***** Loading {subtask} Expert {role} *****\n')
+                if expert_opt_files:
+                    print(f"WARNING: Loading override opts from: {expert_opt_files}")
+                    with PathManager.open(expert_opt_file) as f:
+                        expert_opt = json.load(f)
+                else:
+                    expert_opt = {}
+                expert_opt['interactive_mode'] = opt.get('interactive_mode', True)
+                expert_opt['beam_size'] = opt.get('beam_size')
+                print(
+                    f"WARNING: Setting expert interactive mode to: {expert_opt['interactive_mode']}"
+                    f"WARNING: Setting expert beam size to: {expert_opt['beam_size']}"
+                )
+                model = create_agent_from_model_file(expert, expert_opt)
+                model.opt.log(f"{subtask} Expert {role} Opt")
+                model_pair.append(model)
+            
+        expert_agents.append(model_pair)
 
 
     # Set IDs
@@ -159,7 +170,7 @@ def self_mix(opt):
         selfmix_task=opt.get('selfmix_task', False),
     )
     world = world_class(opt, expert_agents)
-
+    
     # Set up world logging
     logger = DebateLogger(opt)
     log_time = TimeLogger()
@@ -170,10 +181,12 @@ def self_mix(opt):
         report = world.report()
         text, report = log_time.log(i + 1, opt['num_self_mixs'], report)
         logging.info(text)
-
+        
     # Save debates
     if opt['outfile'] is None:
-        outfile = '/tmp/{}_selfmix'.format(model_id)
+        # outfile = '/tmp/{}_selfmix'.format(model_id)
+        dt = opt['datatype'].split(':')[0]
+        outfile = os.path.join(opt['datapath'], 'pbst', f'machine_generated_{dt}.txt')
     else:
         outfile = opt['outfile']
 
@@ -184,7 +197,7 @@ def self_mix(opt):
         world.write(logger, outfile)
     else:
         # use default logger write function
-        logger.write(outfile, world, opt['subtasks'], opt['save_format'])
+        logger.write(outfile, world, opt)
 
     return logger.get_logs()
 

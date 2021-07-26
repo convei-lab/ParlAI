@@ -29,7 +29,7 @@ def _generated_data_path(opt: Opt) -> str:
     # Build the data if it doesn't exist.
     build(opt)
     dt = opt['datatype'].split(':')[0]
-    return os.path.join(opt['datapath'], 'pbst', f'machine_generated.txt')
+    return os.path.join(opt['datapath'], 'pbst', f'machine_generated_{dt}.txt')
 
 class PBSTTeacher(ParlAIDialogTeacher):
     def __init__(self, opt, shared=None):
@@ -43,23 +43,12 @@ class SelfchatTeacher(PBSTTeacher):
     pass
 
 class SelfmixTeacher(PBSTTeacher):
-    # Dummy class to add arguments for interactive world.
-    def __init__(self, opt, shared=None):
-        build(opt)
-        opt = copy.deepcopy(opt)
-        # # get datafile
-        opt['parlaidialogteacher_datafile'] = _processed_data_path(opt)
-
-
-        super().__init__(opt, shared)
-
-class SeedTeacher(ParlAIDialogTeacher):
     def __init__(self, opt, shared=None):
 
         build(opt)
         opt = copy.deepcopy(opt)
-        # # get datafile
         opt['parlaidialogteacher_datafile'] = _processed_data_path(opt)
+        opt['benchmark_datafile'] = opt['outfile'] if opt['outfile'] is not None else _generated_data_path(opt)
         super().__init__(opt, shared)
         
 class DefaultTeacher(ParlAIDialogTeacher):
@@ -70,11 +59,3 @@ class DefaultTeacher(ParlAIDialogTeacher):
         # # get datafile
         opt['parlaidialogteacher_datafile'] = _generated_data_path(opt)
         super().__init__(opt, shared)
-
-# TODO why did I keep this code?
-# def create_agents(opt):
-#     if not opt.get('interactive_task', False):
-#         return create_task_agent_from_taskname(opt)
-#     else:
-#         # interactive task has no task agents (they are attached as user agents)
-#         return []

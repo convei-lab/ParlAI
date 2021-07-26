@@ -20,18 +20,19 @@ ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli')
 def load_openers(opt) -> Optional[List[str]]:
     base_task = opt['task'].split(':')[0]
     if base_task == 'self_mix':
-        # TODO(#2284): Load default openers from s3
         return None
 
     print('[ loading conversation openers... ]')
     # create dummy task so we can get openers from the data
     task_opt = copy.deepcopy(opt)
-    task_opt['task'] = base_task + ':SeedTeacher'
+    task_opt['task'] = base_task + ':SelfmixTeacher'
 
     # default train will loop forever, but evalmode will stop after one epoch
     datatype = task_opt['datatype']
+    print('datatype of pbst task', datatype)
     if 'train' in datatype and 'evalmode' not in datatype:
         task_opt['datatype'] = f'{datatype}:evalmode'
+    print(f"[ loading openers in datatype {task_opt['datatype']}")
     task_opt['interactive_task'] = False
     task_opt['selfchat_task'] = False
     task_opt['selfmix_task'] = False
@@ -175,7 +176,7 @@ class SelfMixWorld(TeamDebateWorld):
 
     def parley(self):
         debug = False
-        subtasks = ['convai2', 'wizardofwikipedia', 'emphatheticdialogues'] # TODO Handle this! it may not always be three tasks
+        subtasks = self.opt.get('subtasks')
 
         if self.episode_done():
             self.turn_cnt = 0
@@ -280,13 +281,18 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][0] = agents[i][0].act()
-                assert len(acts[i][0]['beam_texts']) == 3
-                response_candidates.append(acts[i][0]['beam_texts'])
+                claims = [claim for claim in acts[i][0]['beam_texts']]
+                # the number of predicted beam may not reach to the given beam size
+                for j in range(len(acts[i][0]['beam_texts']), self.opt['beam_size'] ):
+                    claims.append(('', -1e4))
+                if len(acts[i][0]['beam_texts']) != self.opt['beam_size']:
+                    acts[i][0].force_set('beam_texts', claims)
+                response_candidates.append(claims)
             if debug: input('Leaders actioned\n')
             
             # Leaders debate
-            verdicts = filter_out(response_candidates, self.documents[:,0]) # TODO provide only leader's context
-            decisions = decide(response_candidates, verdicts)
+            verdicts = self.filter_out(response_candidates, self.documents[:,0]) # TODO provide only leader's context
+            decisions = self.decide(response_candidates, verdicts)
             for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
                 acts[i][0].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][0].force_set('decision', ','.join(list(map(str, decision))))
@@ -313,18 +319,25 @@ class SelfMixWorld(TeamDebateWorld):
             for i in range(len(self.agents)):
                 agents[i][1].observe(validate(acts[i][0]))
             if debug: input('Followers observed\n')
+            
             ### ================== turn switching =================== ###
+            
             # Followers action
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][1] = agents[i][1].act()
-                assert len(acts[i][1]['beam_texts']) == 3
-                response_candidates.append(acts[i][1]['beam_texts'])
+                claims = [claim for claim in acts[i][1]['beam_texts']]
+                # the number of predicted beam may not reach to the given beam size
+                for j in range(len(acts[i][1]['beam_texts']), self.opt['beam_size'] ):
+                    claims.append(('', -1e4))
+                if len(acts[i][1]['beam_texts']) != self.opt['beam_size']:
+                    acts[i][1].force_set('beam_texts', claims)
+                response_candidates.append(claims)
             if debug: input('Followers actioned\n')
 
             # Followers debate
-            verdicts = filter_out(response_candidates, self.documents[:,1])
-            decisions = decide(response_candidates, verdicts)
+            verdicts = self.filter_out(response_candidates, self.documents[:,1])
+            decisions = self.decide(response_candidates, verdicts)
             for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
                 acts[i][1].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][1].force_set('decision', ','.join(list(map(str, decision))))
@@ -356,133 +369,136 @@ class SelfMixWorld(TeamDebateWorld):
         self.update_counters()
         self.turn_cnt += 1
 
-def fact_check(premise, hypotheis) -> bool:
-    # sentence-pair NLI for fact check
-    ROBERTA.eval()
-    with torch.no_grad():
-        # label_map = {0: 'contradiction', 1: 'neutral', 2: 'entailment'}
-        tokens = ROBERTA.encode(premise, hypotheis)
-        score = ROBERTA.predict('mnli', tokens)
-        prediction = score.argmax().item()
-    
-    if prediction == 0:
-        verdict = False
-    else:
-        verdict = True
+    def fact_check(self, premise, hypotheis) -> bool:
+        # sentence-pair NLI for fact check
+        ROBERTA.eval()
+        with torch.no_grad():
+            # label_map = {0: 'contradiction', 1: 'neutral', 2: 'entailment'}
+            tokens = ROBERTA.encode(premise, hypotheis)
+            score = ROBERTA.predict('mnli', tokens)
+            prediction = score.argmax().item()
+        
+        if prediction == 0:
+            verdict = 0
+        else:
+            verdict = 1
 
-    # random decision
-    # verdict = True if random.randint(1, 10) >= 7 else False
-    return verdict
+        # random decision
+        # verdict = True if random.randint(1, 10) >= 7 else False
+        return verdict
 
-def filter_out(response_candidates, contexts):
-    debug = False
-    short = False
+    def filter_out(self, response_candidates, contexts):
+        debug = False
+        short = False
 
-    ntask = len(response_candidates)
-    nbeam = len(response_candidates[0])
-    virdicts = [[1] * nbeam for _ in range(ntask)]
+        ntask = len(response_candidates)
+        nbeam = len(response_candidates[0])
+        virdicts = [[1] * nbeam for _ in range(ntask)]
 
-    
-    subtasks = ['convai2', 'wizardofwikipedia', 'emphatheticdialogues']
-    
-    # Cross-domain first, regarding them as more reliable filtering than cross-claim fact-checking
-    if debug or short: cnt = 0
-    # for i, context_pair in enumerate(contexts):
-    #     for j, context in enumerate(context_pair): # TODO Decide whether we comapr a claim to both leading/following contexts
-    for i, context in enumerate(contexts):
-        for m, beam_texts in enumerate(response_candidates):
-            for n, (claim, _score) in enumerate(beam_texts):
-                if debug or short: cnt += 1
-                if virdicts[m][n]:
-                    if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]} {subtasks[m]}-{n}')
-                    if debug: print('Context', context)
-                    if debug: print('Claim', claim)
-                    if not context or not claim:
-                        virdicts[m][n] = False
-                        continue
-                    if i == m:
-                        if debug: print()
-                        continue
-                    if debug: print('Virdict', virdicts[m][n])
-                    if debug: print()
-                    virdicts[m][n] &= fact_check(context, claim)
-                    if short: 
-                        # if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]} #{j+1}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
-                        if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
-    if debug or short: print('Virdicts after cross-domain', virdicts, '\n')
-    
-    # Cross-claims
-    if debug or short: cnt = 0
-    for i, beam_texts1 in enumerate(response_candidates):
-        for j, (claim1, _score1) in enumerate(beam_texts1):
-            for m, beam_texts2 in enumerate(response_candidates):
-                for n, (claim2, _score2) in enumerate(beam_texts2):
+        
+        subtasks = self.opt.get('subtasks')
+        
+        # Cross-domain first, regarding them as more reliable filtering than cross-claim fact-checking
+        if debug or short: cnt = 0
+        # for i, context_pair in enumerate(contexts):
+        #     for j, context in enumerate(context_pair): # TODO Decide whether we comapare a claim to both leading/following contexts
+        for i, context in enumerate(contexts):
+            for m, beam_texts in enumerate(response_candidates):
+                for n, (claim, _score) in enumerate(beam_texts):
                     if debug or short: cnt += 1
                     if virdicts[m][n]:
-                        if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]}-{j} {subtasks[m]}-{n}')
-                        if debug: print('Claim1', claim1)
-                        if debug: print('Claim2', claim2)
-                        if not claim1 or not claim2:
-                            virdicts[m][n] = False
+                        if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]} {subtasks[m]}-{n}')
+                        if debug: print('Context', context)
+                        if debug: print('Claim', claim)
+                        # if context == '' or claim == '': # TODO context가 없다고 claim이 contradiction이라는 것은 이상하다. 확인 필요함.
+                        if claim == '': # TODO 그렇다고 empty premise에 대한 claim의 hypothesis를 보는 것도 웃기다. 확인 필요함.
+                            virdicts[m][n] = 0
                             continue
                         if i == m:
                             if debug: print()
                             continue
                         if debug: print('Virdict', virdicts[m][n])
                         if debug: print()
-                        virdicts[m][n] &= fact_check(claim1, claim2)
+                        virdicts[m][n] &= self.fact_check(context, claim)
                         if short: 
-                            if virdicts[m][n] == False: print(f'Cross-claim contradiction on fact-checking #{cnt}\nClaim1 - {subtasks[i]} #{j+1}:\n{claim1}\nClaim2 - {subtasks[m]} #{n+1}:\n\t{claim2} => Filtered Out\n')
-    if debug or short: print('Virdicts after cross-claim', virdicts, '\n')
+                            # if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]} #{j+1}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
+                            if virdicts[m][n] == 0: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
+        if debug or short: print('Virdicts after cross-domain', virdicts, '\n')
+        
+        # Cross-claims
+        if debug or short: cnt = 0
+        for i, beam_texts1 in enumerate(response_candidates):
+            for j, (claim1, _score1) in enumerate(beam_texts1):
+                for m, beam_texts2 in enumerate(response_candidates):
+                    for n, (claim2, _score2) in enumerate(beam_texts2):
+                        if debug or short: cnt += 1
+                        if virdicts[m][n]:
+                            if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]}-{j} {subtasks[m]}-{n}')
+                            if debug: print('Claim1', claim1)
+                            if debug: print('Claim2', claim2)
+                            if claim1 == '' or claim2 == '':
+                                virdicts[m][n] = 0
+                                continue
+                            if i == m:
+                                if debug: print()
+                                continue
+                            if debug: print('Virdict', virdicts[m][n])
+                            if debug: print()
+                            virdicts[m][n] &= self.fact_check(claim1, claim2)
+                            if short: 
+                                if virdicts[m][n] == 0: print(f'Cross-claim contradiction on fact-checking #{cnt}\nClaim1 - {subtasks[i]} #{j+1}:\n{claim1}\nClaim2 - {subtasks[m]} #{n+1}:\n\t{claim2} => Filtered Out\n')
+        if debug or short: print('Virdicts after cross-claim', virdicts, '\n')
 
-    # Getting the agreements for dialogue consistency
-    if debug or short:
-        agreements = [response_candidates[i][j][0] for i, task in enumerate(virdicts) for j, virdic in enumerate(task) if virdic == 1]
-        print("\nExpert's Agreements")
-        print('\n'.join(agreements)) if agreements else print('None')
-        print()
+        # Getting the agreements for dialogue consistency
+        if debug or short:
+            agreements = [response_candidates[i][j][0] for i, task in enumerate(virdicts) for j, virdic in enumerate(task) if virdic == 1]
+            print("\nExpert's Agreements")
+            print('\n'.join(agreements)) if agreements else print('None')
+            print()
 
-    return virdicts
+        return virdicts
 
-def decide(response_candidates, virdicts):
-    debug = False
+    def decide(self, response_candidates, virdicts):
+        debug = False
+        
+        ntask = len(virdicts)
+        nbeam = len(virdicts[0])
+        
+        decimat = [[0] * nbeam for _ in range(ntask)]
+
+        # guard no suggestion from a certain expertise
+        vmat = np.array(virdicts)
+        zero_agreement = not any([virdicts[i][j] for i in range(ntask) for j in range(nbeam)])
+        if zero_agreement:
+            if debug: print('\nZero-agreement found')
+            for i, _task in enumerate(virdicts):
+                vmat[i][0] = 1
+            if debug: print('Guarding Zero-agreement with the virdicts', vmat, '\n')
+
+        # Stochastic selection from non-contradictory claims
+        vprob = np.divide(vmat, vmat.sum())
+        idxlist = np.arange(vprob.size)
+        cholist = np.random.choice(idxlist, 1, p=vprob.flatten())
+        row, col = np.unravel_index(cholist.item(), vmat.shape) # convert the 1d index into 2d coordinates
+        decimat[row][col] = 1
+        
+        # TODO Deterministic selection from entailment-weighted (scored) claims
+        
+        # for debug
+        # print('vprob', vprob)
+        # print('vmat.flatten()', vmat.flatten())
+        # print('vprob.flatten()', vprob.flatten())
+        # print('vprob.flatten()', np.sum(vprob.flatten()))
+        # print('index_1d', index_1d)
+        # print('choice_1d', choice_1d)
+        # print('choice_1d.item()', choice_1d.item())
+        # print('index', row, col)
+        if debug and zero_agreement:
+            print()
+            print('Team Decided')
+            print('The Final Decision', decimat)
+            print()
+
+        return decimat
     
-    ntask = len(virdicts)
-    nbeam = len(virdicts[0])
-    
-    decimat = [[0] * nbeam for _ in range(ntask)]
-
-    # guard no suggestion from a certain expertise
-    vmat = np.array(virdicts)
-    zero_agreement = not any([virdicts[i][j] for i in range(ntask) for j in range(nbeam)])
-    if zero_agreement:
-        if debug: print('\nZero-agreement found')
-        for i, _task in enumerate(virdicts):
-            vmat[i][0] = 1
-        if debug: print('Guarding Zero-agreement with the virdicts', vmat, '\n')
-
-    # Stochastic selection from non-contradictory claims
-    vprob = np.divide(vmat, vmat.sum())
-    idxlist = np.arange(vprob.size)
-    cholist = np.random.choice(idxlist, 1, p=vprob.flatten())
-    row, col = np.unravel_index(cholist.item(), vmat.shape) # convert the 1d index into 2d coordinates
-    decimat[row][col] = 1
-    
-    # TODO Deterministic selection from entaiment-weighted (scored) claims
-    
-    # for debug
-    # print('vprob', vprob)
-    # print('vmat.flatten()', vmat.flatten())
-    # print('vprob.flatten()', vprob.flatten())
-    # print('vprob.flatten()', np.sum(vprob.flatten()))
-    # print('index_1d', index_1d)
-    # print('choice_1d', choice_1d)
-    # print('choice_1d.item()', choice_1d.item())
-    # print('index', row, col)
-    if debug and zero_agreement:
-        print()
-        print('Team Decided')
-        print('The Final Decision', decimat)
-        print()
-
-    return decimat
+# opt['machine_benchmark_datafile']
