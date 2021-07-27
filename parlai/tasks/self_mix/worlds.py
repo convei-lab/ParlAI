@@ -15,7 +15,7 @@ from parlai.core.message import Message
 import torch
 import numpy as np
 
-ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli')
+ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli').cuda()
 
 def load_openers(opt) -> Optional[List[str]]:
     base_task = opt['task'].split(':')[0]

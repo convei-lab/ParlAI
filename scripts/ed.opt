@@ -106,7 +106,7 @@
     "use_reply": "label",
     "add_p1_after_newln": false,
     "delimiter": "\n",
-    "gpu": -1,
+    "gpu": 0,
     "no_cuda": false,
     "dict_file": "data/models/dodecadialogue/empathetic_dialogues/model.dict",
     "dict_initpath": null,
