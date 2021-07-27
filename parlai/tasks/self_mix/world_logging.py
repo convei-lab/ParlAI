@@ -73,15 +73,15 @@ class DebateLogger(WorldLogger):
         assert len(episode) % ntasks == 0
         
         for i, expertise in enumerate(episode):
-            line = {'id': '', 'text': '', 'labels': '', 'episode_done': False,}
+            line = {'id': '', 'text': '', 'labels': '', 'episode_done': False, 'first_expertise': '', 'second_expertise': ''}
 
             for j, (subtask, parley) in enumerate(zip(subtasks, expertise)):
                 first_act, second_act = parley
                 if first_act['id'] == 'context' and second_act['id'] == 'context': # context
                     text_lst.append(second_act['text'])
                     partner_context.append(first_act['text'])
-                    subtask_context[f'context1_{subtask}'] = first_act['text']
-                    subtask_context[f'context2_{subtask}'] = second_act['text']
+                    subtask_context[f'first_context_{subtask}'] = first_act['text']
+                    subtask_context[f'second_context_{subtask}'] = second_act['text']
                 elif first_act['id'] == 'seed' and second_act['id'] == 'seed': # seed
                     if not seeded: # Writing first seed
                         text_lst.append(first_act['text'])
@@ -105,10 +105,10 @@ class DebateLogger(WorldLogger):
                     if '1' in first_decision:
                         line['id'] = first_act['id']
                         text_lst.append(first_act['text'])
-                        line['expertise1'] = subtasks[j]
+                        line['first_expertise'] = subtasks[j]
                     if '1' in second_decision:
                         line['labels'] = [second_act['text']]
-                        line['expertise2'] = subtasks[j]
+                        line['second_expertise'] = subtasks[j]
                     for k, (text, score) in enumerate(first_act['beam_texts']):
                         line[f'first_{subtask}_{k}'] = text + f' (score: {str(round(score, 2))}, verdict: {first_verdict[k]}, decision: {first_decision[k]})'
                     for k, (text, score) in enumerate(second_act['beam_texts']):
@@ -142,7 +142,7 @@ class DebateLogger(WorldLogger):
         assert len(episode) % ntasks == 0
         
         for i, expertise in enumerate(episode):
-            line = {'id': '', 'text': '', 'labels': '', 'episode_done': False,}
+            line = {'id': '', 'text': '', 'labels': '', 'episode_done': False, 'first_expertise': '', 'second_expertise': ''}
             text_lst = [] # By reinitializing text fields, we're changing 
                           # the first utterance pairs to exclude context information
 
@@ -151,8 +151,8 @@ class DebateLogger(WorldLogger):
                 if first_act['id'] == 'context' and second_act['id'] == 'context': # context
                     text_lst.append(second_act['text'])
                     partner_context.append(first_act['text'])
-                    subtask_context[f'context1_{subtask}'] = first_act['text']
-                    subtask_context[f'context2_{subtask}'] = second_act['text']
+                    subtask_context[f'first_context_{subtask}'] = first_act['text']
+                    subtask_context[f'second_context_{subtask}'] = second_act['text']
                 elif first_act['id'] == 'seed' and second_act['id'] == 'seed': # seed
                     if not seeded: # Writing first seed
                         text_lst.append(first_act['text'])
@@ -174,10 +174,10 @@ class DebateLogger(WorldLogger):
                     if '1' in first_decision:
                         line['id'] = first_act['id']
                         text_lst.append(first_act['text'])
-                        line['expertise1'] = subtasks[j]
+                        line['first_expertise'] = subtasks[j]
                     if '1' in second_decision:
                         line['labels'] = [second_act['text']]
-                        line['expertise2'] = subtasks[j]
+                        line['second_expertise'] = subtasks[j]
                     for k, (text, score) in enumerate(first_act['beam_texts']):
                         line[f'first_{subtask}_{k}'] = text + f' (score: {str(round(score, 2))}, verdict: {first_verdict[k]}, decision: {first_decision[k]})'
                     for k, (text, score) in enumerate(second_act['beam_texts']):

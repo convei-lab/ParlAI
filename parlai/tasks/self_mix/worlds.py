@@ -176,7 +176,6 @@ class SelfMixWorld(TeamDebateWorld):
 
     def parley(self):
         debug = False
-        subtasks = self.opt.get('subtasks')
 
         if self.episode_done():
             self.turn_cnt = 0
@@ -281,43 +280,39 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][0] = agents[i][0].act()
-                claims = [claim for claim in acts[i][0]['beam_texts']]
                 # the number of predicted beam may not reach to the given beam size
-                for j in range(len(acts[i][0]['beam_texts']), self.opt['beam_size'] ):
-                    claims.append(('', -1e4))
-                if len(acts[i][0]['beam_texts']) != self.opt['beam_size']:
-                    acts[i][0].force_set('beam_texts', claims)
-                response_candidates.append(claims)
+                if len(acts[i][0]['beam_texts']) < self.opt['beam_size']:
+                    beam_texts = copy.deepcopy(acts[i][0]['beam_texts'])
+                    for j in range(len(acts[i][0]['beam_texts']), self.opt['beam_size'] ):
+                        beam_texts.append(('', -1e4))
+                    acts[i][0].force_set('beam_texts', beam_texts)
+                response_candidates.append(acts[i][0]['beam_texts'])
             if debug: input('Leaders actioned\n')
             
             # Leaders debate
             verdicts = self.filter_out(response_candidates, self.documents[:,0]) # TODO provide only leader's context
-            decisions = self.decide(response_candidates, verdicts)
+            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts)
             for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
                 acts[i][0].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][0].force_set('decision', ','.join(list(map(str, decision))))
             if debug: input('Leaders debated\n')
             
-            if debug: 
+            if debug:
                 for i in range(len(self.agents)): print(f'self.acts[{i}][0]', self.acts[i][0], end='\n\n')
                 input('Before decision updates\n')
-            
-            for i, task in enumerate(decisions):
-                for j, decision in enumerate(task):
-                    if decision == 1:
-                        acts[i][0].force_set('text', response_candidates[i][j][0])
-                        if debug: print(f'\n ***The final decision is :{acts[i][0]["text"]}***\n')
-            if debug:
+
+            acts[expertise_id][0].force_set('text', response_candidates[expertise_id][beam_id][0])
+
+            if debug: 
+                print(f'\n ***The final decision is :{acts[expertise_id][0]["text"]}***\n')
                 print('Decision Matrix', decisions)
                 input('Updated leaders\' decision')
-            
-            if debug: 
                 for i in range(len(self.agents)): print(f'self.acts[{i}][0]', self.acts[i][0], end='\n\n')
                 input('After decision updates\n')
                 
             # Followers observe
             for i in range(len(self.agents)):
-                agents[i][1].observe(validate(acts[i][0]))
+                agents[i][1].observe(validate(acts[expertise_id][0]))
             if debug: input('Followers observed\n')
             
             ### ================== turn switching =================== ###
@@ -326,18 +321,18 @@ class SelfMixWorld(TeamDebateWorld):
             response_candidates = []
             for i in range(len(self.agents)):
                 acts[i][1] = agents[i][1].act()
-                claims = [claim for claim in acts[i][1]['beam_texts']]
                 # the number of predicted beam may not reach to the given beam size
-                for j in range(len(acts[i][1]['beam_texts']), self.opt['beam_size'] ):
-                    claims.append(('', -1e4))
-                if len(acts[i][1]['beam_texts']) != self.opt['beam_size']:
-                    acts[i][1].force_set('beam_texts', claims)
-                response_candidates.append(claims)
+                if len(acts[i][1]['beam_texts']) < self.opt['beam_size']:
+                    beam_texts = copy.deepcopy(acts[i][1]['beam_texts'])
+                    for j in range(len(acts[i][1]['beam_texts']), self.opt['beam_size'] ):
+                        beam_texts.append(('', -1e4))
+                    acts[i][1].force_set('beam_texts', beam_texts)
+                response_candidates.append(acts[i][1]['beam_texts'])
             if debug: input('Followers actioned\n')
 
             # Followers debate
             verdicts = self.filter_out(response_candidates, self.documents[:,1])
-            decisions = self.decide(response_candidates, verdicts)
+            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts)
             for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
                 acts[i][1].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][1].force_set('decision', ','.join(list(map(str, decision))))
@@ -347,23 +342,18 @@ class SelfMixWorld(TeamDebateWorld):
                 for i in range(len(self.agents)): print(f'self.acts[{i}][1]', self.acts[i][1], end='\n\n')
                 input('Before decision updates\n')
             
-            for i, task in enumerate(decisions):
-                for j, decision in enumerate(task):
-                    if decision == 1:
-                        acts[i][1].force_set('text', response_candidates[i][j][0])
-                        if debug: print(f'\n ***The final decision is :{acts[i][1]["text"]}***\n')
+            acts[expertise_id][1].force_set('text', response_candidates[expertise_id][beam_id][0])
+
             if debug:
+                print(f'\n ***The final decision is :{acts[expertise_id][1]["text"]}***\n')
                 print('Decision Matrix', decisions)
                 input('Updated followers\' decision')
-            
-            if debug: 
                 for i in range(len(self.agents)): print(f'self.acts[{i}][1]', self.acts[i][1], end='\n\n')
                 input('After decision updates\n')
                 
             # Leaders observe
             for i in range(len(self.agents)):
-                # agents[i][0].observe(validate(decision))
-                agents[i][0].observe(validate(acts[decision][1]))
+                agents[i][0].observe(validate(acts[expertise_id][1]))
             if debug: input('Leaders observed\n')
 
         self.update_counters()
@@ -499,6 +489,6 @@ class SelfMixWorld(TeamDebateWorld):
             print('The Final Decision', decimat)
             print()
 
-        return decimat
+        return decimat, (row, col)
     
 # opt['machine_benchmark_datafile']

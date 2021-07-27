@@ -4,7 +4,7 @@ cd ..
 
 parlai self_mix \
 --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
---num-self-mixs 2 \
+--num-self-mixs 5000 \
 --selfmix-max-turns 6 \
 --datatype train \
 --expert-model-files zoo:dodecadialogue/convai2_ft/model,zoo:dodecadialogue/wizard_of_wikipedia_ft/model,zoo:dodecadialogue/empathetic_dialogues_ft/model \
@@ -17,10 +17,9 @@ parlai self_mix \
 --beam-min-length 10 --beam-block-ngram 3 --beam-context-block-ngram 3 \
 --save-format parlai
 
-
 parlai self_mix \
 --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
---num-self-mixs 2 \
+--num-self-mixs 1000 \
 --selfmix-max-turns 6 \
 --datatype valid \
 --expert-model-files zoo:dodecadialogue/convai2_ft/model,zoo:dodecadialogue/wizard_of_wikipedia_ft/model,zoo:dodecadialogue/empathetic_dialogues_ft/model \
@@ -35,7 +34,7 @@ parlai self_mix \
 
 parlai self_mix \
 --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
---num-self-mixs 2 \
+--num-self-mixs 500 \
 --selfmix-max-turns 6 \
 --datatype test \
 --expert-model-files zoo:dodecadialogue/convai2_ft/model,zoo:dodecadialogue/wizard_of_wikipedia_ft/model,zoo:dodecadialogue/empathetic_dialogues_ft/model \
