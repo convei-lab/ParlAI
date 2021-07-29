@@ -7,6 +7,8 @@
 
 
 import os
+import sys
+from parlai.tasks.pbst.agents import parsed_data_path, prompt_candi_data_path, prompt_query_data_path, response_candi_data_path
 import re
 import json
 import pandas as pd
@@ -22,6 +24,7 @@ from typing import Tuple, Dict, List
 from math import isclose
 from collections import OrderedDict
 
+from tqdm import tqdm
 from icecream import ic
 from parlai.scripts.eval_model import eval_model
 
@@ -45,283 +48,7 @@ RESOURCES = {
 
 SPLIT_RATIO = OrderedDict({'train': 0.6, 'valid': 0.3, 'test': 0.1})
 
-def build(opt):
-    version = 'v0.0'
-    dpath = os.path.join(opt['datapath'], 'pbst')
-    
-    if not build_data.built(dpath, version):
-        subtaskpaths = []
-
-        for subtask in opt['subtasks']:
-            subtaskpath = os.path.join(dpath, subtask)
-            subtaskpaths.append(subtaskpath)
-        
-        logging.info('building data: ' + dpath)
-        if build_data.built(dpath):
-            # An older version exists, so remove these outdated files.
-            build_data.remove_dir(dpath)
-        build_data.make_dir(dpath)
-
-        # # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-        #     build_data.make_dir(subtaskpath)
-        #     downloadable_file = RESOURCES[subtask]
-        #     downloadable_file.download_file(subtaskpath) 
-
-        if 'empatheticdialogues' in opt['subtasks']:
-            # Move empatheticdialogues to parent directory
-            # (ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.)
-            from shutil import move
-            ed_path = subtaskpaths[opt['subtasks'].index('empatheticdialogues')]
-            srcdir = os.path.join(ed_path, 'empatheticdialogues')
-            if os.path.isdir(srcdir):
-                for filename in os.listdir(srcdir):
-                    move(os.path.join(srcdir, filename), os.path.join(ed_path, filename))
-                os.rmdir(os.path.join(ed_path, 'empatheticdialogues'))
-
-        context, random_candidates = _build_context_and_response(opt, subtaskpaths)
-        
-        blended_context_path = os.path.join(dpath, 'blended_context.jsonl')
-        with open(blended_context_path, 'w') as fout:
-            # json.dump(context, fout)
-            for dic in context:
-                json.dump(dic, fout) 
-                fout.write("\n")
-
-        context_splits = _split(context, dpath, SPLIT_RATIO, randomized=True)
-        
-
-        _create_parlai_format(dpath, opt)
-
-        # Mark the data as built.
-        build_data.mark_done(dpath, version)
-
-
-
-def _convai_parser(filepath
-    ) -> Tuple[List[str], List[str], List[str], List[str]]:
-
-    debug = False
-
-    print('Parsing ConvAI2 on', filepath)
-    leading_contexts, following_contexts, seed_list, responses = [], [], [], []
-    
-    # Pre-processing
-    with open(filepath, 'r') as file:
-        lines = file.readlines()
-    for i, line in enumerate(lines):
-        lines[i] = re.sub(r"^[0-9]+", "", line).strip()
-    
-    # Collecting
-    persona1, persona2, seed_pair = [], [], None
-    episode_done = False
-    
-    def roleswap(persona_list):
-        for i, persona_sent in enumerate(persona_list):
-            if persona_sent.startswith("partner's persona: "):
-                persona_list[i] = persona_sent.replace("partner's persona: ", "your persona: ")
-            else:
-                persona_list[i] = persona_sent.replace("your persona: ", "partner's persona: ")
-        return persona_list
-    
-    for i, line in enumerate(lines):
-        if debug and i < 50:
-            print('Line', i, line) # for debug
-        if line.startswith("partner's persona: "):
-            persona1.append(line)
-        elif line.startswith("your persona: "):
-            persona2.append(line)
-            episode_done = False
-        elif not episode_done:
-            seed_pair = line.split('\t')
-            assert len(seed_pair) == 2
-            if seed_pair[0] == '__SILENCE__':
-                nextline = lines[i+1]
-                nextpair = nextline.split('\t')
-                seed_list.append([seed_pair[1], nextpair[0]])
-                leading_contexts.append('\n'.join(roleswap(persona2))) 
-                following_contexts.append('\n'.join(roleswap(persona1)))
-                # print(seed_list[-1]) for roleswap debug
-                # print(leading_contexts[-1])
-                # print(following_contexts[-1])
-                # input()
-            else:
-                seed_list.append(seed_pair)
-                leading_contexts.append('\n'.join(persona1)) 
-                following_contexts.append('\n'.join(persona2))
-            responses.extend([seed_pair[0], seed_pair[1]])
-            episode_done = True
-            persona1, persona2, seed_pair = [], [], []
-        else:
-            utt_pair = line.split('\t')
-            responses.extend([utt_pair[0], utt_pair[1]])
-    
-    assert len(leading_contexts) == len(following_contexts) == len(seed_list)
-
-    if debug:
-        for i, (leading_context, following_context, seed) in enumerate(zip(leading_contexts, following_contexts, seed_list)):
-            if i == 2:
-                break
-            print(leading_context)
-            print(following_context)
-            print(seed)
-            input()
-        for i, response in enumerate(responses):
-            if i == 20:
-                break
-            print(response)
-            input()
-
-    return leading_contexts, following_contexts, seed_list, responses
-
-def _wizard_of_wikipedia_parser(filepath
-    ) -> Tuple[List[str], List[str], List[str], List[str]]:
-
-    debug = False
-
-    print('Parsing wizard_of_wikipedia on', filepath)
-    leading_contexts, following_contexts, seed_list, responses = [], [], [], []
-
-    topic_list, passage_list, persona_list = [], [], []
-    with open(filepath, 'r') as file:
-        wow = json.load(file)
-    for i, episode in enumerate(wow):
-        # keys: 1 'chosen_topic', 1 'chosen_topic_passage (title?)', X 'persona', 1 'wizard_eval', X 'dialog'
-        topic = episode['chosen_topic']
-        persona = episode['persona']
-        wizard_eval = episode['wizard_eval']
-        dialog = episode['dialog']
-        chosen_topic_passage = episode['chosen_topic_passage']
-
-        if debug and i < 2:
-            print('topic', topic)
-            print('persona', persona)
-            print('wizard_eval', wizard_eval)
-            print('chosen_topic_passage', chosen_topic_passage)
-            print('len passage', len(chosen_topic_passage))
-            print('len dialog', len(dialog))
-            print('utts', [utt['text'] for utt in dialog])
-        # # each utt in dialog has keys: 1 speaker, 1 text, 1 checked_passage (title), 1 checked_sentence (article), 7 or 10 retrieved_passages
-        # input()
-
-        # 모든 시간대에 사용한 지식 sentence를 전부 제공한다. (o) vs 너무 길기 때문에 처음만 제공한다. (x)
-        passage = ' '.join(chosen_topic_passage) 
-        # passage = chosen_topic_passage[0] 
-        if dialog[0]['speaker'].endswith('Apprentice'): 
-            # 1_Apprentice first and 0_Wizard second
-            seed_pair = [utt['text'] for utt in dialog[:2]]
-        else: 
-            # 0_Wizard first and 1_Apprentice second
-            seed_pair = [utt['text'] for utt in dialog[1:3]]
-        topic_list.append(topic)
-        passage_list.append(passage)
-        persona_list.append(persona)
-        seed_list.append(seed_pair)
-        responses.extend([utt['text'] for utt in dialog])
-
-        # # for debug
-        # for j, utt_dic in enumerate(dialog):
-        #     # keys: 'speaker', 'text', 'candidate_responses', 'retrieved_passages', 'retrieved_topics'
-        #     speaker = utt_dic['speaker']
-        #     text = utt_dic['text']
-        #     if 'checked_sentence' in utt_dic and 'checked_passage' in utt_dic: # guiding only
-        #         checked_sentence = utt_dic['checked_sentence']
-        #         checked_passage = utt_dic['checked_passage']
-        #     if 'candidate_responses' in utt_dic: # guided only
-        #         candidate_responses = utt_dic['candidate_responses'] # 100 utterance sentences
-        #     retrieved_passages = utt_dic['retrieved_passages'] # 7 topics as key with its passage as value
-        #     retrieved_topics = utt_dic['retrieved_topics'] # 7 topics same above
-        #     if j < 3:
-        #         print('Speaker', speaker, text)
-        #         input()
-
-
-    assert  len(topic_list) == len(passage_list) == len(seed_list) == len(persona_list)
-
-    for topic, passage, persona in zip(topic_list, passage_list, persona_list):
-        # leading_contexts.append(f'Topic: {topic}\nPersona: {persona}') # Persona 떼어냈다.
-        leading_contexts.append(f'topic: {topic}') 
-        following_contexts.append(f'topic: {topic}\nknowledge: {passage}')
-    
-    
-    assert len(leading_contexts) == len(following_contexts) == len(seed_list)
-
-    # for debug
-    if debug:
-        for i, (leading_context, following_context, seed) in enumerate(zip(leading_contexts, following_contexts, seed_list)):
-            if i == 5:
-                break
-            print(leading_context)
-            print(following_context)
-            print(seed)
-            input()
-
-        for i, response in enumerate(responses):
-            if i == 20:
-                break
-            print(response)
-            input()
-
-    return leading_contexts, following_contexts, seed_list, responses
-
-def _empatheticdialogues_parser(filepath
-    ) -> Tuple[List[str], List[str], List[str], List[str]]:
-    
-    debug = False
-
-    print('Parsing empatheticdialogues on', filepath)
-    leading_contexts, following_contexts, seed_list, responses = [], [], [], []
-
-    situation_list, emotion_list, seed_list = [], [], []
-
-    # Preprocessing
-    df = pd.read_csv(filepath, usecols=range(8), sep=',', lineterminator='\n', quotechar="`")
-    df['prompt'] = df['prompt'].str.replace('_comma_', ',')
-    df['utterance'] = df['utterance'].str.replace('_comma_', ',')
-    
-    # Collecting
-    situation_list = df.groupby('conv_id').agg({'prompt':lambda x: list(x)[0]})['prompt']
-    emotion_list = df.groupby('conv_id').agg({'context':lambda x: list(x)[0]})['context']
-    seed_list = df.groupby('conv_id').agg({'utterance':lambda x: list(x)[:2]})['utterance']
-    responses = df['utterance']
-
-    # Check
-    remove_idx = []
-    for i, seed in enumerate(seed_list):
-        # Some episodes have only one turn! So we drop the such rows, 
-        # as we cannot get a pair of initial utterances
-        if len(seed) != 2: 
-            remove_idx.append(i)
-    situation_list = situation_list.drop(situation_list.index[remove_idx]).tolist()
-    emotion_list = emotion_list.drop(emotion_list.index[remove_idx]).tolist()
-    seed_list = seed_list.drop(seed_list.index[remove_idx]).tolist()
-    responses = responses.tolist() # We don't when we're gathering utterances
-
-    assert len(situation_list) == len(emotion_list) == len(seed_list)
-
-    # Added extra information of emotion labels to the leader. Fair enough?
-    for situation, emotion in zip(situation_list, emotion_list):
-        leading_contexts.append(f'situation: {situation}\nemotion: {emotion}')
-        following_contexts.append(f'')
-    assert len(leading_contexts) == len(following_contexts) == len(seed_list)
-
-    if debug:
-        for i, (leading_context, following_context, seed) in enumerate(zip(leading_contexts, following_contexts, seed_list)):
-            if i == 2:
-                break
-            print(leading_context)
-            print(following_context)
-            print(seed)
-            input()
-        for i, response in enumerate(responses):
-            if i == 20:
-                break
-            print(response)
-            input()
-
-    return leading_contexts, following_contexts, seed_list, responses
-
-def parser_switch():
+def _parser_switch():
     parser_switch = {
         'convai2': {
             'files': ['train_both_original_no_cands.txt'], # 'valid_both_original_no_cands.txt'
@@ -338,25 +65,370 @@ def parser_switch():
     }
     return parser_switch
 
-def _parse_task_dataset(subtask, subtaskpath
-    ) -> Tuple[List[str], List[str], List[List[str]]]:
-    # Collect the context and the seed utterance pair of each episode
-    leading_contextss, following_contextss, seeds, responses = [], [], [], []
 
-    # Identify correct parser and iterate all files to parse
-    parser = parser_switch()[subtask]
+def _convai_parser(filepath
+    ) -> Tuple[List[List[Dict, Dict]], List[List], List[Dict]]:
+    debug = True
+
+    def anonimize(p: str) -> str:
+        return p.replace("partner's persona: ", "").replace("your persona: ", "")
+    
+    def swap(persona0, persona1):
+        p0 = copy.deepcopy(persona0)
+        return persona1, p0
+    
+    print('Parsing ConvAI2 on', filepath)
+    prompts, dialogs, supports = [], [], [] # prompts are initial context pairs
+    
+    # Pre-processing
+    with open(filepath, 'r') as file:
+        lines = file.readlines()
+    for i, line in enumerate(lines):
+        lines[i] = re.sub(r"^[0-9]+", "", line).strip()
+    endline = len(lines)
+        
+    
+    # Episode-level Collecting
+    persona0, persona1, dialog, support = [], [], []
+    
+    for i, line in enumerate(lines):
+        if line.startswith("partner's persona: "):
+            persona0.append(anonimize(line))
+        elif line.startswith("your persona: "):
+            persona1.append(anonimize(line))
+        else:
+            utt_pair = line.split('\t')
+            assert len(utt_pair) == 2
+            if utt_pair[0] == '__SILENCE__':
+                dialog.append(utt_pair[1])
+                persona0, persona1 = swap(persona0, persona1)
+            else:
+                dialog.extend(utt_pair)
+            if i < endline and lines[i+1].startswith("partner's persona: "):
+                prompts.append([{"partner's persona: ": persona0}, {"your persona: : ", persona1}])
+                dialogs.append([u.strip() for u in dialog])
+                supports.append({})
+                persona0, persona1 = [], []
+    
+    assert len(prompts) == len(dialogs) == len(supports)
+
+    if debug:
+        for i, (prompt, dialog, support) in enumerate(zip(prompts, dialogs, supports)):
+            if i == 5:
+                break
+            print('\n'.join(prompt[0]))
+            print('\n'.join(prompt[1]))
+            print('\n'.join([f'{utt}\n\t{"\n\t".join(sup)})' for utt, sup in zip(dialog, support)]))
+            input()
+
+    return prompts, dialogs, supports
+
+def _wizard_of_wikipedia_parser(filepath
+    ) -> Tuple[List[List[Dict, Dict]], List[List], List[Dict]]:
+
+    debug = True
+
+    print('Parsing wizard_of_wikipedia on', filepath)
+    prompts, dialogs, supports = [], [], []
+
+    with open(filepath, 'r') as file:
+        wow = json.load(file)
+    for i, episode in enumerate(wow):
+        # keys: 1 'chosen_topic', 1 'chosen_topic_passage (title?)', X 'persona', 1 'wizard_eval', X 'dialog'
+        topic = episode['chosen_topic']
+        persona = episode['persona']
+        wizard_eval = episode['wizard_eval']
+        dialog = episode['dialog']
+        chosen_topic_passage = episode['chosen_topic_passage']
+
+        if debug and i < 2:
+            print('topic', topic)
+            print('persona', persona)
+            print('wizard_eval', wizard_eval)
+            print('chosen_topic_passage', chosen_topic_passage)
+            print('len passage', len(chosen_topic_passage))
+            print('len diag', len(dialog))
+            print('utts', [utt['text'] for utt in dialog])
+            input()
+            
+            for j, utt_dic in enumerate(dialog):
+                # each utt dic in dialog has keys: 1 speaker, 1 text, 1 checked_passage (title), 1 checked_sentence (article), 7 or 10 retrieved_passages
+                if j < 3:
+                    break
+                speaker = utt_dic['speaker']
+                text = utt_dic['text']
+                print('\tspeaker', speaker)
+                print('\ttext', text)
+                if 'checked_sentence' in utt_dic and 'checked_passage' in utt_dic: # guiding only
+                    checked_passage = utt_dic['checked_passage']
+                    checked_sentence = utt_dic['checked_sentence']
+                    print('\tchecked_sentence', checked_sentence)
+                    print('\tchecked_passage', checked_passage)
+                if 'candidate_responses' in utt_dic: # guided only
+                    retrieved_topics = utt_dic['retrieved_topics'] # 7 topics same above
+                    retrieved_passages = utt_dic['retrieved_passages'] # 7 topics as key with its passage as value
+                    print('\tretrieved_topics', retrieved_topics)
+                    print('\tretrieved_passages', retrieved_passages)
+                    candidate_responses = utt_dic['candidate_responses'] # 100 utterance sentences
+                    # print('\tcandidate_responses', candidate_responses)
+                print()
+                input()
+                
+        if dialog[0]['speaker'].endswith('Apprentice'): 
+            # Apprentice first and Wizard second
+            passage = chosen_topic_passage[0]
+            checked_passage = [utt_dic['checked_passage'] for utt_dic in dialog]
+            checked_sentence = [utt_dic['checked_sentence'] for utt_dic in dialog]
+            dialogs.append([utt['text'].strip() for utt in dialog])
+        else: 
+            # Wizard first (dropped) and Apprentice second
+            passage = chosen_topic_passage[1]
+            dialogs.append([utt['text'].strip() for utt in dialog[1:]])
+            checked_passage = [utt_dic['checked_passage'] for utt_dic in dialog[1:]]
+            checked_sentence = [utt_dic['checked_sentence'] for utt_dic in dialog[1:]]
+        prompts.append([{'topic': topic}, {'topic': topic, 'passage': passage}])
+        supports.append({'checked_passage': checked_sentence, 'checked_sentence': checked_sentence})
+        
+    assert len(prompts) == len(dialogs) == len(supports)
+
+    if debug:
+        for i, (prompt, dialog, support) in enumerate(zip(prompts, dialogs, supports)):
+            if i == 5:
+                break
+            print('\n'.join(prompt[0]))
+            print('\n'.join(prompt[1]))
+            print('\n'.join([f'{utt}\n\t{"\n\t".join(sup)})' for utt, sup in zip(dialog, support)]))
+            input()
+
+    return prompts, dialogs, supports
+
+def _empatheticdialogues_parser(filepath
+    ) -> Tuple[List[List[Dict, Dict]], List[List], List[Dict]]:
+    debug = True
+
+    print('Parsing empatheticdialogues on', filepath)
+    prompts, dialogs, supports = [], [], []
+
+    situations, emotions = [], []
+
+    # Preprocessing
+    df = pd.read_csv(filepath, usecols=range(8), sep=',', lineterminator='\n', quotechar="`")
+    df['prompt'] = df['prompt'].str.replace('_comma_', ',')
+    df['utterance'] = df['utterance'].str.replace('_comma_', ',')
+    
+    # Collecting
+    situations = df.groupby('conv_id').agg({'prompt':lambda x: list(x)[0]})['prompt']
+    emotions = df.groupby('conv_id').agg({'context':lambda x: list(x)[0]})['context']
+    dialogs = df.groupby('conv_id').agg({'utterance':lambda x:list(x)})['utterances']
+
+    # Check
+    remove_idx = []
+    for i, dialog in enumerate(dialogs):
+        # Some episodes have only one turn! So we drop the such rows, 
+        # as we cannot get a pair of initial utterances
+        if len(dialog) != 2: 
+            remove_idx.append(i)
+    situations = situations.drop(situations.index[remove_idx]).tolist()
+    emotions = emotions.drop(emotions.index[remove_idx]).tolist()
+    dialogs = dialogs.drop(dialogs.index[remove_idx]).tolist()
+    dialogs = [list(map(str.strip, dialog)) for dialog in dialogs]
+
+    # Added extra information of emotion labels to the leader. Fair enough?
+    for situation, emotion in zip(situations, emotions):
+        prompts.append([{'situation': situation, 'emotion': emotion}, {}])
+        supports.append({})
+    
+    assert len(prompts) == len(dialogs) == len(supports)
+
+    if debug:
+        for i, (prompt, dialog, support) in enumerate(zip(prompts, dialogs, supports)):
+            if i == 5:
+                break
+            print('\n'.join(prompt[0]))
+            print('\n'.join(prompt[1]))
+            print('\n'.join([f'{utt}\n\t{"\n\t".join(sup)})' for utt, sup in zip(dialog, support)]))
+            input()
+
+    return prompts, dialogs, supports
+
+def parse_subtask_dataset(opt: str, subtask: str
+    ) -> Tuple[List[List[str, str]], List[List[str]], List[List[str]]]: 
+    # collect the propmts and seed utterance pair from entire datatset
+    prompts, dialogs, supports = [], [], []
+
+    # identify correct parser and iterate all files to parse
+    parser = _parser_switch()[subtask]
     for file in parser['files']:
-        filepath = os.path.join(subtaskpath, file)
-        fleading_contextss, ffollowing_contextss, fseeds, fresponses = parser['func'](filepath)
-        leading_contextss.extend(fleading_contextss)
-        following_contextss.extend(ffollowing_contextss)
-        seeds.extend(fseeds)
-        responses.extend(fresponses)
-    return leading_contextss, following_contextss, seeds, responses
+        filepath = os.path.join(opt['datapath'], 'pbst', subtask, file)
+        prompt, dialog, support = parser['func'](filepath)
+        prompts.extend(prompt)
+        dialogs.extend(dialog)
+        supports.extend(support)
+    return prompts, dialogs, supports
 
-def _retrieve_contextual_document(seed_queries, contextual_docs, teacher, origin, target, subtaskpath):
+def write_subtask_parses(opt, subtask, prompts, dialogs, supports):
+    
+    parsed_path = parsed_data_path(opt, subtask)
+    parses = list(zip(prompts, dialogs, supports))
+    with open(parsed_path, 'w') as f:
+        json.dump(parses, f)
+    print(f'{len(prompts)} parsing results from {subtask} saved to {parsed_path}')
+    
+def write_prompt_retrieval_queries(opt, subtask, retri_query):
+    retri_query_path = prompt_query_data_path(opt, subtask)
+    with open(retri_query_path, 'w') as f:
+        json.dump(retri_query, f)
+    print(f'{len(retri_query)} retrieval queires for {subtask} saved to {retri_query_path}')
+    
+def write_prompt_retrieval_candidates(opt, subtask, retri_candi):
+    retri_candi = np.unique(np.array(retri_candi))
+    retri_candi_path = prompt_candi_data_path(opt, subtask)
+    with open(retri_candi_path, 'w') as f:
+        json.dump(retri_candi, f)
+    print(f'{len(retri_candi)} retrieval candidates for {subtask} saved to {retri_candi_path}')
+    
+def build_prompt_retrieval_dataset(opt, subtask, dialogs, prompts):    
+    # build query-to-candidate dataset
+    
+    # queries, candidates;
+    write_prompt_retrieval_candidates(opt, subtask, retri_candi)
+
+    # file structure: utterance, label, candidates(splitted by '\t')
+    trainset = []
+    validset = []
+    testset = []
+    with open(seed_utterance_wow_path) as json_file:
+        seed_utterance_wow = json.load(json_file)
+
+    # only topic (cause we can get passage by retrieving)
+    with open(l_wow_path) as json_file:
+        l_wow = json.load(json_file)
+        
+    with open(f_wow_path) as json_file:
+        f_wow = json.load(json_file)
+
+    l_wow_unique = list(set(l_wow))
+    f_wow_unique = list(set(f_wow))
+
+    for i in tqdm(range(len(seed_utterance_wow))):
+        dialog_dict_l = {}
+        dialog_dict_l['text'] = seed_utterance_wow[i][0]
+        dialog_dict_l['labels'] = l_wow[i]
+        # dialog_dict_l['label_candidates'] = l_wow_unique
+        
+        dialog_dict_f = {}
+        dialog_dict_f['text'] = seed_utterance_wow[i][1]
+        dialog_dict_f['labels'] = f_wow[i]
+        # dialog_dict_f['label_candidates'] = ㄹ_wow_unique
+
+        if i <= int(len(seed_utterance_wow) * 0.3):
+            # topic_inference_train_list.append(dialog_dict_l)
+            topic_inference_train_list.append(dialog_dict_f)
+        elif i > int(len(seed_utterance_wow) * 0.8) and i < int(len(seed_utterance_wow) * 0.9):
+            # topic_inference_valid_list.append(dialog_dict_l)
+            topic_inference_valid_list.append(dialog_dict_f)
+        elif i > int(len(seed_utterance_wow) * 0.9):
+            # topic_inference_test_list.append(dialog_dict_l)
+            topic_inference_test_list.append(dialog_dict_f)
+
+    f = open(dpath + '/fixed_candidates.txt', 'w')
+    for candidate in f_wow_unique:
+        f.write(txt_escape(candidate) + '\n')
+    print("Saved candidate file at", dpath + '/fixed_candidates.txt')       
+    f.close()      
+    
+    with open(dpath + '/train.json', "w") as json_file:
+        json.dump(topic_inference_train_list, json_file)
+    print("Saved file at", dpath + '/train.json')
+
+    # Due to storge issue, use train file as valid/test file
+    with open(dpath + '/valid.json', "w") as json_file:
+        json.dump(topic_inference_valid_list, json_file)
+    print("Saved file at", dpath + '/valid.json')
+
+    with open(dpath + '/test.json', "w") as json_file:
+        json.dump(topic_inference_test_list, json_file)
+    print("Saved file at", dpath + '/test.json')        
+    
+def write_response_candidates(opt, response_candidates):
+    # writing the maximum pool of response candidate sampled from each task datasets
+    respo_candi_path = response_candi_data_path(opt)
+    with open(respo_candi_path, 'w') as f:
+        json.dump(response_candidates, f)
+    print(f'{len(response_candidates)} response candidates from {opt["subtask"]} saved to {respo_candi_path}')
+    
+def align_opener(opt: str):
+    # prompts are different: for teacher and model 
+    subtasks = opt['subtasks']
+    prmpdic, diagdic, sprtdic = {}, {}, {} # seed pairs are concatenated into a sentence
+    respo_candi = []
+
+    for subtask in subtasks:
+        # task-wise parsing 
+        prompts, dialogs, supports = parse_subtask_dataset(subtask)
+        write_subtask_parses(opt, subtask, prompts, dialogs, supports)
+        
+        # convert into value matrix
+        prmpdic[subtask] = np.array([[p1.values(), p2.values()] for p1, p2 in prompts])
+        diagdic[subtask] = np.array(dialogs) # odds teacher, evens model
+        sprtdic[subtask] = np.array([s.values() for s in supports])
+        
+        # benchmark response candidates
+        respo_candi.append(dialogs)
+        
+    # benchmark response candidates
+    respo_candi = np.unique(np.array(respo_candi))
+    response_candi_data_path(opt, respo_candi)
+
+    # in-domain utterance-to-prompt alignment
+    for subtask in subtasks:
+        build_prompt_retrieval_dataset(opt, subtask, diagdic[subtask], prmpdic[subtask])
+    utt2prmp = {}
+    for orgtask in subtasks:
+        utt2prmp[orgtask] = {}
+        for trgtask in subtasks:
+            if orgtask == trgtask:
+                utt2prmp[subtask] = (seeds[:,0] + seeds[:,1]).tolist()
+                seed2ctx[orgtask][trgtask] = ctxdic[orgtask]
+    
+    # cross-domain utterance-to-prompt alignment
+    for trgtask in subtasks:
+        if orgtask != trgtask:
+            # align seeds with inter-task contexts
+            seed2ctx[orgtask][trgtask] = ctxalign(orgtask, trgtask, seeddic[orgtask], ctxdic[trgtask], 'lexical_retrieval')
+    
+    context = []
+
+    for srctaskid, srctask in enumerate(subtasks):
+
+        context_length = len(lcm[srctaskid][0])
+        alignedseed = seed_dic[srctask]
+        
+        for context_id in range(context_length):
+            episode = {}
+            episode['source_task'] = srctask
+            episode['leader'] = {}
+            episode['follower'] = {}
+
+            episode['leader']['seed'] = alignedseed[context_id][0]
+            episode['follower']['seed'] = alignedseed[context_id][1]
+            episode['leader']['context'] = {}
+            episode['follower']['context'] = {}
+
+            for alignedtaskid, alignedtask in enumerate(subtasks):
+                episode['leader']['context'][alignedtask] = lcm[srctaskid][alignedtaskid][context_id]
+
+            for alignedtaskid, alignedtask in enumerate(subtasks):
+                episode['follower']['context'][alignedtask] = fcm[srctaskid][alignedtaskid][context_id]
+
+            context.append(episode)
+
+ 
+    return context, response_candidates
+
+def ctxalign(seed_queries, contextual_docs, teacher, origin, target, subtaskpath):
     '''
-        retreival: query (seed utterances) -> document (contexts)
+        retreival: query (utterance) -> document (a set of context description)
     '''
     retrieved_doc = []
 
@@ -510,116 +582,63 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, teacher, origin
 
     return retrieved_doc
 
+
+
+def build_blended_prompt(opt):
+    version = 'v0.0'
+    dpath = os.path.join(opt['datapath'], 'pbst')
+    
+    if not build_data.built(dpath, version):
+        subtaskpaths = []
+
+        for subtask in opt['subtasks']:
+            subtaskpath = os.path.join(dpath, subtask)
+            subtaskpaths.append(subtaskpath)
+        
+        logging.info('building data: ' + dpath)
+        if build_data.built(dpath):
+            y = None
+            while y in ['y', 'n']:
+                y = input('An older version of exists. Removing all outdated files. This may remove the benchmark dataset you built. Proceeds? y or n')
+            build_data.remove_dir(dpath) if y == 'y' else sys.exit(1)
+        build_data.make_dir(dpath)
+
+        # # Download the data.
+        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+        #     build_data.make_dir(subtaskpath)
+        #     downloadable_file = RESOURCES[subtask]
+        #     downloadable_file.download_file(subtaskpath) 
+
+        if 'empatheticdialogues' in opt['subtasks']:
+            # Move empatheticdialogues to parent directory
+            # (ED 데이터셋만 내부폴더가 하나 더 생긴다. tar.gz라서 그런듯.)
+            from shutil import move
+            ed_path = subtaskpaths[opt['subtasks'].index('empatheticdialogues')]
+            srcdir = os.path.join(ed_path, 'empatheticdialogues')
+            if os.path.isdir(srcdir):
+                for filename in os.listdir(srcdir):
+                    move(os.path.join(srcdir, filename), os.path.join(ed_path, filename))
+                os.rmdir(os.path.join(ed_path, 'empatheticdialogues'))
+
+        context, random_candidates = align_context_and_response(opt, subtaskpaths)
+        
+        blended_context_path = os.path.join(dpath, 'blended_context.jsonl')
+        with open(blended_context_path, 'w') as fout:
+            # json.dump(context, fout)
+            for dic in context:
+                json.dump(dic, fout) 
+                fout.write("\n")
+
+        context_splits = lined_data_split(context, dpath, SPLIT_RATIO, randomized=True)
         
 
+        parlai_formatter(dpath, opt)
 
-def _build_context_and_response(opt, subtaskpaths):
-    # contexts are different: for leading speaker and following speaker 
-    subtasks, nsubtasks = opt['subtasks'], len(opt['subtasks'])
-    leading_context_dic, following_context_dic, seed_dic = {}, {}, {} # seed pairs are concatenated into a sentence
-    response_candidates = {}
+        # Mark the data as built.
+        build_data.mark_done(dpath, version)
 
-    # Collect task-wise contexts and seeds
-    for subtask, subtaskpath in zip(subtasks, subtaskpaths):
-        leading_contexts, following_contexts, seeds, responses = _parse_task_dataset(subtask, subtaskpath)
-        lc = os.path.join(opt['datapath'], 'pbst', f'leading_{subtask}_kb.json')
-        fc = os.path.join(opt['datapath'], 'pbst', f'following_{subtask}_kb.json')
-        su = os.path.join(opt['datapath'], 'pbst', f'seed_utterance_pairs_{subtask}.json')
-        rc = os.path.join(opt['datapath'], 'pbst', f'responses_candidates_{subtask}.json')
-        with open(lc, 'w') as f0, open(fc, 'w') as f1, open(su, 'w') as f2, open(rc, 'w') as f3:
-            json.dump(leading_contexts, f0)
-            json.dump(following_contexts, f1)
-            json.dump(seeds, f2)
-            json.dump(responses, f3)
-        assert len(leading_contexts) == len(following_contexts) == len(seeds)
-        leading_context_dic[subtask] = leading_contexts
-        following_context_dic[subtask] = following_contexts
-        seed_dic[subtask] = seeds
-        response_candidates[subtask] = responses
-        print(f'{len(seeds)} contexts and seed utterances pairs were parsed from the {subtask}')
-        print(f'Also, {len(responses)} response candidates were parsed from the {subtask}\n')
 
-    # writing the maximum pool of response candidate sampled from each task datasets
-    response_candidates = np.array([response.strip() for response_set in response_candidates.values() for response in response_set])
-    response_candidates = np.unique(response_candidates).tolist()
-    rc = os.path.join(opt['datapath'], 'pbst', f'responses_candidates.json')
-    with open(rc, 'w') as f:
-        json.dump(response_candidates, f)
-    print(f'\nTotal of {len(response_candidates)} response candidates were parsed from the given {", ".join(subtasks)} subtasks\n')
-
-    # Contextual alignment
-    lcm = leading_contextual_matrix = [[None]*nsubtasks for _ in range(nsubtasks)]
-    fcm = following_contextual_matrix = copy.deepcopy(lcm)
-
-    # Align inter-task relationhip between seeds and contexts
-    for i, origin in enumerate(subtasks):
-        seed_pairs = np.array(seed_dic[origin])
-        leading_seeds, following_seeds = seed_pairs[:,0], seed_pairs[:,1]
-        for j, (target, subtaskpath) in enumerate(zip(subtasks, subtaskpaths)):
-
-            if i == j:
-                lcm[i][j] = leading_context_dic[origin]
-                fcm[i][j] = following_context_dic[origin]
-            else:
-                leading_contexts = leading_context_dic[target]
-                following_contexts = following_context_dic[target]
-                # Retrieve contextual document from different task
-                # And align the seed with all the other subtask's context
-                lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
-                fcm[i][j] = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical_retrieval', origin, target+'_2', subtaskpath)
-    
-    context = []
-
-    for srctaskid, srctask in enumerate(subtasks):
-
-        context_length = len(lcm[srctaskid][0])
-        alignedseed = seed_dic[srctask]
-        
-        for context_id in range(context_length):
-            episode = {}
-            episode['source_task'] = srctask
-            episode['leader'] = {}
-            episode['follower'] = {}
-
-            episode['leader']['seed'] = alignedseed[context_id][0]
-            episode['follower']['seed'] = alignedseed[context_id][1]
-            episode['leader']['context'] = {}
-            episode['follower']['context'] = {}
-
-            for alignedtaskid, alignedtask in enumerate(subtasks):
-                episode['leader']['context'][alignedtask] = lcm[srctaskid][alignedtaskid][context_id]
-
-            for alignedtaskid, alignedtask in enumerate(subtasks):
-                episode['follower']['context'][alignedtask] = fcm[srctaskid][alignedtaskid][context_id]
-
-            context.append(episode)
-
-    # for git merge        
-    # # for debug
-    # for i, episode in enumerate(context):
-    #     print('Episode', i, '*'*40)
-    #     print('1 Source task', episode['source_task'])
-    #     print('2 Leader\'s context')
-    #     leader = episode['leader']
-    #     for task, context in leader['context'].items():
-    #         print('2+ Task', task)
-    #         print(context)
-    #     print('3 Leader\'s seed')
-    #     print(leader['seed'])
-    #     print()
-    #     print('4 Follower\'s context')
-    #     follower = episode['follower']
-    #     for task, context in follower['context'].items():
-    #         print('4+ Task', task)
-    #         print(context)
-    #     print('5 Follower\'s seed')
-    #     print(follower['seed'])
-    #     input()
-    
- 
-    return context, response_candidates
-
-def _split(json_list, dpath, split_ratio: OrderedDict, randomized=True):
+def lined_data_split(json_list, dpath, split_ratio: OrderedDict, randomized=True):
     # sr = split_ratio = OrderedDict({'train': 0.6, 'val': 0.3, 'test': 0.1})
 
     # filepath = '/home/theorist/data3/ParlAI/data/pbst/pbst.jsonl'
@@ -670,7 +689,7 @@ def _split(json_list, dpath, split_ratio: OrderedDict, randomized=True):
     return split_data
 
 
-def _create_parlai_format(dpath: str, opt: List):
+def parlai_formatter(dpath: str, opt: List):
     """
     Copy data into the format read by ParlAIDialogTeacher.
 
@@ -698,13 +717,11 @@ def _create_parlai_format(dpath: str, opt: List):
                 num_entries = 1
                 entry_idx = 0
                 for entry_idx in range(num_entries):
-                    line = _get_line(
-                        episode, num_entries, entry_idx, subtasks
-                    )
+                    line = paralai_liner(episode, num_entries, entry_idx, subtasks)
                     f_write.write(f'{line} \n')
 
 
-def _get_line(episode: dict, num_entries: int, entry_idx: int, subtasks: List) -> str:
+def paralai_liner(episode: dict, num_entries: int, entry_idx: int, subtasks: List) -> str:
     """
     Return the line to print in the reformatted file.
     """
@@ -725,9 +742,11 @@ def _get_line(episode: dict, num_entries: int, entry_idx: int, subtasks: List) -
     parts = {
         'text': input_utterance,
         'labels': model_label,
+        'expertise0': episode['source_task'],
+        'expertise1': episode['source_task']
     }
     assert all([isinstance(part, str) for part in parts.values()])
-    line = '\t'.join([f'{key}:{_escape(value)}' for key, value in parts.items()])
+    line = '\t'.join([f'{key}:{respo_escape(value)}' for key, value in parts.items()])
 
     # Add episode_done
     if episode_done:
@@ -736,5 +755,8 @@ def _get_line(episode: dict, num_entries: int, entry_idx: int, subtasks: List) -
     return line
 
 
-def _escape(value: str) -> str:
+def respo_escape(value: str) -> str:
     return value.replace('\t', '\\t').replace('\n', '\\n').replace('|', '__PIPE__')
+        
+def retri_escape(value: str) -> str:
+    return str(value).replace('\t', '\\t').replace('\n', '\\n').replace('\r', '\\r')

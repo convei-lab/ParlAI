@@ -4,7 +4,7 @@ cd ..
 
 parlai self_mix \
 --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
---num-self-mixs 1 \
+--num-self-mixs 1000 \
 --selfmix-max-turns 6 \
 --datatype valid \
 --expert-model-files zoo:dodecadialogue/convai2_ft/model,zoo:dodecadialogue/wizard_of_wikipedia_ft/model,zoo:dodecadialogue/empathetic_dialogues_ft/model \
