@@ -2,6 +2,10 @@
 
 set -o xtrace
 cd ..
+parlai display_data --task convai2
+parlai display_data --task wizard_of_wikipedia
+parlai display_data --task empathetic_dialogues
+
 parlai display_data --task persona_inference
 parlai display_data --task topic_inference
 parlai display_data --task emotion_inference
