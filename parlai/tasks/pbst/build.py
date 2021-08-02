@@ -468,10 +468,16 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, teacher, origin
         
         # prepare queries of the retireval, which are the seed utterances
         eval_list = []
-        for query in seed_queries:
-            # input_dict = {'text': query, 'labels': candidates[0], 'label_candidates': candidates}
-            input_dict = {'text': query, 'labels': candidates[0]}
-            eval_list.append(input_dict)
+        if target.startswith('wizard_of_wikipedia'):
+            leading_queries = seed_queries[0]
+            following_queries = seed_queries[1]
+            for i in range(len(leading_queries)):
+                input_dict = {'text': leading_queries[i] + ' ' + following_queries[i], 'labels': candidates[0]} # tfidf ranker는 이렇게 붙어있는애에 학습이 안되어있어서 성능이 안나올수도 있다. 이걸 쓰려면 tf-idf도 다시 학습해야할수도 잇음
+                eval_list.append(input_dict)
+        else:
+            for query in seed_queries:
+                input_dict = {'text': query, 'labels': candidates[0]}
+                eval_list.append(input_dict)
         
         # save the queries as files
         retrieval_query_path = f'{parlai_data_path}/pbst/contextual_alignment/{task}/{teacher}/{src2trg}/query.json'
@@ -565,9 +571,18 @@ def _build_context_and_response(opt, subtaskpaths):
                 following_contexts = following_context_dic[target]
                 # Retrieve contextual document from different task
                 # And align the seed with all the other subtask's context
-                lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
-                fcm[i][j] = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical_retrieval', origin, target+'_2', subtaskpath)
-    
+                if target == 'convai2':
+                    lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                    fcm[i][j] = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical_retrieval', origin, target+'_2', subtaskpath)
+                elif target == 'wizard_of_wikipedia':
+                    lcm[i][j] = _retrieve_contextual_document([leading_seeds, following_seeds], leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                    fcm[i][j] = copy.deepcopy(lcm[i][j]) # 일단은 fcm이 lcm을 따라가도록 해두었음
+                    for k in range(len(lcm[i][j])):
+                        lcm[i][j][k] = lcm[i][j][k].split('\n')[0] # knowledge resource는 잘리도록...
+                else:
+                    lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                    fcm[i][j] = [''] * len(lcm[i][j])
+
     context = []
 
     for srctaskid, srctask in enumerate(subtasks):
