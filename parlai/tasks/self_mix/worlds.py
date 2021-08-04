@@ -15,6 +15,11 @@ from parlai.core.message import Message
 import torch
 import numpy as np
 
+from icecream import ic
+from parlai.scripts.eval_model import eval_model
+from parlai.core.agents import create_agent, create_agent_from_model_file
+import os
+
 ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli').cuda()
 
 def load_openers(opt) -> Optional[List[str]]:
@@ -67,7 +72,8 @@ def load_openers_from_file(filepath: str) -> List[str]:
 
 class SelfMixWorld(TeamDebateWorld):
     def __init__(self, opt, agents, shared=None):
-        super().__init__(opt, agents, shared)
+        self.agents, self.retrieval_experts = agents
+        super().__init__(opt, self.agents, shared)
         self.init_contexts(shared=shared)
         self._openers = None
         self.init_openers()
@@ -182,6 +188,7 @@ class SelfMixWorld(TeamDebateWorld):
             self.episode_cnt += 1
             self.contexts = None
             self.seed_utterances = None
+            self.dialogue_history = []
             agents = self.get_agents()
             for i in range(self.nsubtask):
                 for j in [0, 1]:
@@ -193,6 +200,7 @@ class SelfMixWorld(TeamDebateWorld):
             # print('agents', self.agents)
 
         if self.turn_cnt == 0:
+            self.dialogue_history = []
             self.acts = [[None] * 2 for _ in range(self.nsubtask)]
             # get the beginning of the conversation, which can include contexts
             # and/or any number of starting messages
@@ -211,7 +219,7 @@ class SelfMixWorld(TeamDebateWorld):
             for i in range(self.nsubtask):
                 for j in [0, 1]:
                     context = Message(
-                        {'text': self.contexts[i][j], 'episode_done': False, 'id': 'context'}
+                        {'text': self.contexts[i][j], 'episode_done': False, 'id': 'context'} # self.contexts[i][j] = skill context
                     )
                     self.acts[i][j] = context
                     self.agents[i][j].observe(validate(context))
@@ -262,6 +270,10 @@ class SelfMixWorld(TeamDebateWorld):
                             self.acts[i][j] = self.agents[i][j].act() 
                     
                     if debug: print(f'seed uttererance pairs [{i}][{j}]', self.acts[i][j])
+
+            self.dialogue_history.append(self.acts[0][0])
+            self.dialogue_history.append(self.acts[0][1])
+
             if debug:
                 print('\nContexts and seeds are initialized. Starting bot2bot conversation.\n')
             # TODO ED의 context가 이상하다. -> opener나 alignment가 이상하다
@@ -291,12 +303,12 @@ class SelfMixWorld(TeamDebateWorld):
             
             # Leaders debate
             verdicts = self.filter_out(response_candidates, self.documents[:,0]) # TODO provide only leader's context
-            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts)
+            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts, self.documents[:,0])
             for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
                 acts[i][0].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][0].force_set('decision', ','.join(list(map(str, decision))))
             if debug: input('Leaders debated\n')
-            
+
             if debug:
                 for i in range(len(self.agents)): print(f'self.acts[{i}][0]', self.acts[i][0], end='\n\n')
                 input('Before decision updates\n')
@@ -313,6 +325,7 @@ class SelfMixWorld(TeamDebateWorld):
             # Followers observe
             for i in range(len(self.agents)):
                 agents[i][1].observe(validate(acts[expertise_id][0]))
+                self.dialogue_history.append(acts[expertise_id][0])
             if debug: input('Followers observed\n')
             
             ### ================== turn switching =================== ###
@@ -332,7 +345,7 @@ class SelfMixWorld(TeamDebateWorld):
 
             # Followers debate
             verdicts = self.filter_out(response_candidates, self.documents[:,1])
-            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts)
+            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts, self.documents[:,1])
             for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
                 acts[i][1].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][1].force_set('decision', ','.join(list(map(str, decision))))
@@ -354,6 +367,7 @@ class SelfMixWorld(TeamDebateWorld):
             # Leaders observe
             for i in range(len(self.agents)):
                 agents[i][0].observe(validate(acts[expertise_id][1]))
+                self.dialogue_history.append(acts[expertise_id][1])
             if debug: input('Leaders observed\n')
 
         self.update_counters()
@@ -416,28 +430,28 @@ class SelfMixWorld(TeamDebateWorld):
         if debug or short: print('Virdicts after cross-domain', virdicts, '\n')
         
         # Cross-claims
-        if debug or short: cnt = 0
-        for i, beam_texts1 in enumerate(response_candidates):
-            for j, (claim1, _score1) in enumerate(beam_texts1):
-                for m, beam_texts2 in enumerate(response_candidates):
-                    for n, (claim2, _score2) in enumerate(beam_texts2):
-                        if debug or short: cnt += 1
-                        if virdicts[m][n]:
-                            if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]}-{j} {subtasks[m]}-{n}')
-                            if debug: print('Claim1', claim1)
-                            if debug: print('Claim2', claim2)
-                            if claim1 == '' or claim2 == '':
-                                virdicts[m][n] = 0
-                                continue
-                            if i == m:
-                                if debug: print()
-                                continue
-                            if debug: print('Virdict', virdicts[m][n])
-                            if debug: print()
-                            virdicts[m][n] &= self.fact_check(claim1, claim2)
-                            if short: 
-                                if virdicts[m][n] == 0: print(f'Cross-claim contradiction on fact-checking #{cnt}\nClaim1 - {subtasks[i]} #{j+1}:\n{claim1}\nClaim2 - {subtasks[m]} #{n+1}:\n\t{claim2} => Filtered Out\n')
-        if debug or short: print('Virdicts after cross-claim', virdicts, '\n')
+        # if debug or short: cnt = 0
+        # for i, beam_texts1 in enumerate(response_candidates):
+        #     for j, (claim1, _score1) in enumerate(beam_texts1):
+        #         for m, beam_texts2 in enumerate(response_candidates):
+        #             for n, (claim2, _score2) in enumerate(beam_texts2):
+        #                 if debug or short: cnt += 1
+        #                 if virdicts[m][n]:
+        #                     if debug: print('FACT CHECKING CNT', cnt, f'{subtasks[i]}-{j} {subtasks[m]}-{n}')
+        #                     if debug: print('Claim1', claim1)
+        #                     if debug: print('Claim2', claim2)
+        #                     if claim1 == '' or claim2 == '':
+        #                         virdicts[m][n] = 0
+        #                         continue
+        #                     if i == m:
+        #                         if debug: print()
+        #                         continue
+        #                     if debug: print('Virdict', virdicts[m][n])
+        #                     if debug: print()
+        #                     virdicts[m][n] &= self.fact_check(claim1, claim2)
+        #                     if short: 
+        #                         if virdicts[m][n] == 0: print(f'Cross-claim contradiction on fact-checking #{cnt}\nClaim1 - {subtasks[i]} #{j+1}:\n{claim1}\nClaim2 - {subtasks[m]} #{n+1}:\n\t{claim2} => Filtered Out\n')
+        # if debug or short: print('Virdicts after cross-claim', virdicts, '\n')
 
         # Getting the agreements for dialogue consistency
         if debug or short:
@@ -448,47 +462,45 @@ class SelfMixWorld(TeamDebateWorld):
 
         return virdicts
 
-    def decide(self, response_candidates, virdicts):
-        debug = False
-        
-        ntask = len(virdicts)
-        nbeam = len(virdicts[0])
-        
-        decimat = [[0] * nbeam for _ in range(ntask)]
+    def decide(self, response_candidates, virdicts, documents):
+        expert_model_files = ['zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model'] #, 'models:wizard_of_wikipedia/full_dialogue_retrieval_model/model', '']
+        expert_models = ['transformer/polyencoder', 'transformer/polyencoder', 'transformer/polyencoder'] #, 'projects:wizard_of_wikipedia:wizard_transformer_ranker', '']
 
-        # guard no suggestion from a certain expertise
-        vmat = np.array(virdicts)
-        zero_agreement = not any([virdicts[i][j] for i in range(ntask) for j in range(nbeam)])
-        if zero_agreement:
-            if debug: print('\nZero-agreement found')
-            for i, _task in enumerate(virdicts):
-                vmat[i][0] = 1
-            if debug: print('Guarding Zero-agreement with the virdicts', vmat, '\n')
+        num_agents = len(response_candidates)
+        beam_size = len(response_candidates[0])
 
-        # Stochastic selection from non-contradictory claims
-        vprob = np.divide(vmat, vmat.sum())
-        idxlist = np.arange(vprob.size)
-        cholist = np.random.choice(idxlist, 1, p=vprob.flatten())
-        row, col = np.unravel_index(cholist.item(), vmat.shape) # convert the 1d index into 2d coordinates
-        decimat[row][col] = 1
-        
-        # TODO Deterministic selection from entailment-weighted (scored) claims
-        
-        # for debug
-        # print('vprob', vprob)
-        # print('vmat.flatten()', vmat.flatten())
-        # print('vprob.flatten()', vprob.flatten())
-        # print('vprob.flatten()', np.sum(vprob.flatten()))
-        # print('index_1d', index_1d)
-        # print('choice_1d', choice_1d)
-        # print('choice_1d.item()', choice_1d.item())
-        # print('index', row, col)
-        if debug and zero_agreement:
-            print()
-            print('Team Decided')
-            print('The Final Decision', decimat)
-            print()
+        # Create response candidate file for fixed candidate
+        response_candidates_list = []
+        f = open(self.opt.get('datapath') + '/response_candidates.txt', 'w')
+        for i in range(num_agents):
+            for j in range(beam_size):
+                f.write(response_candidates[i][j][0] + '\n')
+                response_candidates_list.append(response_candidates[i][j][0])
+        f.close()
 
-        return decimat, (row, col)
-    
-# opt['machine_benchmark_datafile']
+        # skill-aware rankers observe history and sCtx
+        retrieval_results = []
+        for i in range(num_agents):
+            context = Message({'text': documents[i], 'episode_done': False, 'id': 'context'})
+
+            self.retrieval_experts[i].set_fixed_candidates(False)
+            self.retrieval_experts[i].observe(validate(context))
+            for msg in self.dialogue_history:
+                self.retrieval_experts[i].observe(validate(msg))
+            retrieval_results.append(self.retrieval_experts[i].act()['text_candidates'])
+
+        score = virdicts
+        max_score = -1
+
+        for i in range(num_agents):
+            for j in range(beam_size):
+                score[i][j] = score[i][j] * ((retrieval_results[0].index(response_candidates[i][j][0]) + 1) + (retrieval_results[1].index(response_candidates[i][j][0]) + 1) + (retrieval_results[2].index(response_candidates[i][j][0]) + 1))
+                if score[i][j] > max_score:
+                    max_score = score[i][j]
+                    max_row = i
+                    max_col = j
+
+        decimat = np.zeros_like(virdicts)
+        decimat[max_row][max_col] = 1
+
+        return decimat, (max_row, max_col)

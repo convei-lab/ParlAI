@@ -21,6 +21,8 @@ import json
 import random
 import os
 
+from icecream import ic
+
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Generate self-mix of models')
@@ -153,6 +155,27 @@ def self_mix(opt):
             
         expert_agents.append(model_pair)
 
+    # Create skill-aware ranker agents
+    expert_model_files = ['zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model'] #, 'models:wizard_of_wikipedia/full_dialogue_retrieval_model/model', '']
+    expert_models = ['transformer/polyencoder', 'transformer/polyencoder', 'transformer/polyencoder'] #, 'projects:wizard_of_wikipedia:wizard_transformer_ranker', '']
+    retrieval_experts = []
+    for i in range(len(subtasks)):
+        ranker_opt = {}
+        ranker_opt['model_file'] = expert_model_files[i]
+        ranker_opt['model'] = expert_models[i]
+        ranker_opt['interactive_mode'] = True
+        ranker_opt['candidates'] = 'fixed'
+        ranker_opt['eval_candidates'] = 'fixed'
+        ranker_opt['fixed_candidates_path'] = opt['datapath'] + '/response_candidates.txt'
+        ranker_opt['ignore_bad_candidates'] = True
+        ranker_opt['encode_candidate_vecs'] = True
+        ranker_opt['allow_missing_init_ranker_opts'] = True
+        ranker_opt['reuse'] = 'replace'
+        ranker_opt['gpu'] = -1
+
+        model = create_agent_from_model_file(expert_model_files[i], ranker_opt)
+        retrieval_experts.append(model)
+
 
     # Set IDs
     for i, agent_pair in enumerate(expert_agents):
@@ -169,7 +192,7 @@ def self_mix(opt):
         selfchat_task=opt.get('selfchat_task', False),
         selfmix_task=opt.get('selfmix_task', False),
     )
-    world = world_class(opt, expert_agents)
+    world = world_class(opt, (expert_agents, retrieval_experts))
     
     # Set up world logging
     logger = DebateLogger(opt)
