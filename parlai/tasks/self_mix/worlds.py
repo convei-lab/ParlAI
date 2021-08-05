@@ -193,6 +193,8 @@ class SelfMixWorld(TeamDebateWorld):
             for i in range(self.nsubtask):
                 for j in [0, 1]:
                     agents[i][j].reset()
+            for i in range(len(self.retrieval_experts)):
+                self.retrieval_experts[i].reset()
 
         if debug:
             print('\nepisode_cnt', self.episode_cnt)
@@ -387,8 +389,6 @@ class SelfMixWorld(TeamDebateWorld):
         else:
             verdict = 1
 
-        # random decision
-        # verdict = True if random.randint(1, 10) >= 7 else False
         return verdict
 
     def filter_out(self, response_candidates, contexts):
@@ -463,9 +463,6 @@ class SelfMixWorld(TeamDebateWorld):
         return virdicts
 
     def decide(self, response_candidates, virdicts, documents):
-        expert_model_files = ['zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model'] #, 'models:wizard_of_wikipedia/full_dialogue_retrieval_model/model', '']
-        expert_models = ['transformer/polyencoder', 'transformer/polyencoder', 'transformer/polyencoder'] #, 'projects:wizard_of_wikipedia:wizard_transformer_ranker', '']
-
         num_agents = len(response_candidates)
         beam_size = len(response_candidates[0])
 

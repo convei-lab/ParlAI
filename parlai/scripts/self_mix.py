@@ -156,7 +156,7 @@ def self_mix(opt):
         expert_agents.append(model_pair)
 
     # Create skill-aware ranker agents
-    expert_model_files = ['zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model', 'zoo:pretrained_transformers/model_poly/model'] #, 'models:wizard_of_wikipedia/full_dialogue_retrieval_model/model', '']
+    expert_model_files = ['zoo:pretrained_transformers/model_poly/model', '/home/minju/empathetic_dialogues_poly/model.checkpoint', '/home/minju/wizard_of_wikipedia_poly/model.checkpoint'] #, 'models:wizard_of_wikipedia/full_dialogue_retrieval_model/model', '']
     expert_models = ['transformer/polyencoder', 'transformer/polyencoder', 'transformer/polyencoder'] #, 'projects:wizard_of_wikipedia:wizard_transformer_ranker', '']
     retrieval_experts = []
     for i in range(len(subtasks)):
