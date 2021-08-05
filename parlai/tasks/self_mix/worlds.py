@@ -59,6 +59,14 @@ def load_openers(opt) -> Optional[List[str]]:
         is_first_turn = msg.get('episode_done', False)
     # for opener in openers:
     #     print('opener', opener)
+
+    # set seed range for pararell training
+    if opt['seed_range'] != None:
+        seed_start, seed_end = opt['seed_range'].split(',')
+        openers = openers[int(seed_start): int(seed_end)]
+
+    ic(len(openers))
+
     print(f'[ loaded {len(openers)} openers ]')
     return openers
 
@@ -479,7 +487,6 @@ class SelfMixWorld(TeamDebateWorld):
         retrieval_results = []
         for i in range(num_agents):
             context = Message({'text': documents[i], 'episode_done': False, 'id': 'context'})
-
             self.retrieval_experts[i].set_fixed_candidates(False)
             self.retrieval_experts[i].observe(validate(context))
             for msg in self.dialogue_history:
@@ -491,7 +498,12 @@ class SelfMixWorld(TeamDebateWorld):
 
         for i in range(num_agents):
             for j in range(beam_size):
-                score[i][j] = score[i][j] * ((retrieval_results[0].index(response_candidates[i][j][0]) + 1) + (retrieval_results[1].index(response_candidates[i][j][0]) + 1) + (retrieval_results[2].index(response_candidates[i][j][0]) + 1))
+                try:
+                    score[i][j] = score[i][j] * ((retrieval_results[0].index(response_candidates_list[i * beam_size + j]) + 1) + (retrieval_results[1].index(response_candidates_list[i * beam_size + j]) + 1) + (retrieval_results[2].index(response_candidates_list[i * beam_size + j]) + 1))
+                except:
+                    ic(set(response_candidates_list) - set(retrieval_results[0]))
+                    ic(retrieval_results[0])
+                    score[i][j] = 0
                 if score[i][j] > max_score:
                     max_score = score[i][j]
                     max_row = i

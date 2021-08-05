@@ -918,7 +918,7 @@ class TorchRankerAgent(TorchAgent):
                         self.fixed_candidates_path = path
                         cand_path = self.fixed_candidates_path
                 # Load candidates
-                logging.info(f"Loading fixed candidate set from {cand_path}")
+                # logging.info(f"Loading fixed candidate set from {cand_path}")
                 with PathManager.open(cand_path, 'r', encoding='utf-8') as f:
                     cands = [line.strip() for line in f.readlines()]
                 # Load or create candidate vectors
@@ -976,7 +976,7 @@ class TorchRankerAgent(TorchAgent):
         """
         Load fixed candidates from a path.
         """
-        logging.info(f"Loading fixed candidate set {cand_type} from {path}")
+        # logging.info(f"Loading fixed candidate set {cand_type} from {path}")
         with PathManager.open(path, 'rb') as f:
             return torch.load(f, map_location=lambda cpu, _: cpu)
 
@@ -985,9 +985,9 @@ class TorchRankerAgent(TorchAgent):
         Prebuild cached vectors for fixed candidates.
         """
         cand_batches = [cands[i : i + 512] for i in range(0, len(cands), 512)]
-        logging.info(
-            f"Vectorizing fixed candidate set ({len(cand_batches)} batch(es) of up to 512)"
-        )
+        # logging.info(
+        #     f"Vectorizing fixed candidate set ({len(cand_batches)} batch(es) of up to 512)"
+        # )
         cand_vecs = []
         for batch in tqdm(cand_batches):
             cand_vecs.extend(self.vectorize_fixed_candidates(batch))
@@ -999,7 +999,7 @@ class TorchRankerAgent(TorchAgent):
         """
         Save cached vectors.
         """
-        logging.info(f"Saving fixed candidate set {cand_type} to {path}")
+        # logging.info(f"Saving fixed candidate set {cand_type} to {path}")
         with PathManager.open(path, 'wb') as f:
             torch.save(vecs, f)
 
@@ -1030,10 +1030,10 @@ class TorchRankerAgent(TorchAgent):
         cand_encs = []
         bsz = self.opt.get('encode_candidate_vecs_batchsize', 256)
         vec_batches = [vecs[i : i + bsz] for i in range(0, len(vecs), bsz)]
-        logging.info(
-            "Encoding fixed candidates set from ({} batch(es) of up to {}) ]"
-            "".format(len(vec_batches), bsz)
-        )
+        # logging.info(
+        #     "Encoding fixed candidates set from ({} batch(es) of up to {}) ]"
+        #     "".format(len(vec_batches), bsz)
+        # )
         # Put model into eval mode when encoding candidates
         self.model.eval()
         with torch.no_grad():

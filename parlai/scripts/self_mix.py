@@ -87,6 +87,12 @@ def setup_args(parser=None):
         choices=['conversations', 'parlai'],
         help='Format to save logs in. conversations is a jsonl format, parlai is a text format.',
     )
+    parser.add_argument(
+        '--seed-range',
+        type=str,
+        default=None,
+        help='Seed range if you want to split seed set and train in parallel',
+    )
 
     parser.set_defaults(interactive_mode=True, task='self_mix')
     DebateLogger.add_cmdline_args(parser, partial_opt=None)
@@ -156,8 +162,8 @@ def self_mix(opt):
         expert_agents.append(model_pair)
 
     # Create skill-aware ranker agents
-    expert_model_files = ['zoo:pretrained_transformers/model_poly/model', '/home/minju/empathetic_dialogues_poly/model.checkpoint', '/home/minju/wizard_of_wikipedia_poly/model.checkpoint'] #, 'models:wizard_of_wikipedia/full_dialogue_retrieval_model/model', '']
-    expert_models = ['transformer/polyencoder', 'transformer/polyencoder', 'transformer/polyencoder'] #, 'projects:wizard_of_wikipedia:wizard_transformer_ranker', '']
+    expert_model_files = ['zoo:pretrained_transformers/model_poly/model', '/home/minju/empathetic_dialogues_poly/model.checkpoint', '/home/minju/wizard_of_wikipedia_poly/model.checkpoint']
+    expert_models = ['transformer/polyencoder', 'transformer/polyencoder', 'transformer/polyencoder'] 
     retrieval_experts = []
     for i in range(len(subtasks)):
         ranker_opt = {}
@@ -170,8 +176,8 @@ def self_mix(opt):
         ranker_opt['ignore_bad_candidates'] = True
         ranker_opt['encode_candidate_vecs'] = True
         ranker_opt['allow_missing_init_ranker_opts'] = True
-        ranker_opt['reuse'] = 'replace'
-        ranker_opt['gpu'] = -1
+        ranker_opt['fixed_candidate_vecs'] = 'replace'
+        # ranker_opt['gpu'] = -1
 
         model = create_agent_from_model_file(expert_model_files[i], ranker_opt)
         retrieval_experts.append(model)
@@ -204,6 +210,25 @@ def self_mix(opt):
         report = world.report()
         text, report = log_time.log(i + 1, opt['num_self_mixs'], report)
         logging.info(text)
+
+        if i % 50 == 0:
+            # Save debates
+            if opt['outfile'] is None:
+                # outfile = '/tmp/{}_selfmix'.format(model_id)
+                dt = opt['datatype'].split(':')[0]
+                outfile = os.path.join(opt['datapath'], 'pbst', f'machine_generated_{dt}.txt')
+            else:
+                outfile = opt['outfile']
+
+            if opt['save_format'] == 'conversations' and hasattr(world, 'write'):
+                # use self chat specific world to write conversation
+                # this might be useful for logging extra contextual
+                # information (like personas)
+                world.write(logger, outfile)
+            else:
+                # use default logger write function
+                logger.write(outfile, world, opt)
+
         
     # Save debates
     if opt['outfile'] is None:
