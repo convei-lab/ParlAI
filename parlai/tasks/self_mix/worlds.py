@@ -20,6 +20,10 @@ from parlai.scripts.eval_model import eval_model
 from parlai.core.agents import create_agent, create_agent_from_model_file
 import os
 
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
+from datasets import load_dataset, load_metric
+from datasets import Dataset
+
 ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli').cuda()
 
 def load_openers(opt) -> Optional[List[str]]:
@@ -65,8 +69,6 @@ def load_openers(opt) -> Optional[List[str]]:
         seed_start, seed_end = opt['seed_range'].split(',')
         openers = openers[int(seed_start): int(seed_end)]
 
-    ic(len(openers))
-
     print(f'[ loaded {len(openers)} openers ]')
     return openers
 
@@ -90,6 +92,8 @@ class SelfMixWorld(TeamDebateWorld):
         self.episode_cnt = 0
         self.nsubtask = len(self.opt.get('subtasks'))
         self.world_name = 'SelfMixWorld'
+        self.init_skill_classifier()
+        ROBERTA.eval()
 
     def init_contexts(self, shared=None) -> None:
         """
@@ -127,6 +131,40 @@ class SelfMixWorld(TeamDebateWorld):
         if self._openers:
             return [open_msg for open_msg in self._openers[episode_num]]# [random.choice(self._openers)]
         return None
+
+    def compute_metrics(self, eval_pred):
+        """
+        Compute metric function for skill classifier
+        """
+        logits, labels = eval_pred
+        metric = load_metric("accuracy")
+        predictions = np.argmax(logits, axis=-1)
+        return metric.compute(predictions=predictions, references=labels)
+
+    def init_skill_classifier(self):
+        """
+        Initialize skill classifier model, trainer & tokenizer
+        """
+        # training_args = TrainingArguments("test_trainer")
+        training_args = TrainingArguments(
+            "test_trainer",
+            per_device_eval_batch_size=1,
+            per_device_train_batch_size=1
+        )
+        model = AutoModelForSequenceClassification.from_pretrained("/home/minju/skill_classifier/output", num_labels=3)
+        self.skill_classifier = Trainer(
+            model=model,
+            args=training_args,
+            compute_metrics=self.compute_metrics,
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+
+    def softmax(self, x):
+        """
+        Compute softmax values for each sets of scores in x.
+        """
+        e_x = np.exp(x - np.max(x))
+        return e_x / e_x.sum()
 
     def reset(self):
         """
@@ -385,7 +423,6 @@ class SelfMixWorld(TeamDebateWorld):
 
     def fact_check(self, premise, hypotheis) -> bool:
         # sentence-pair NLI for fact check
-        ROBERTA.eval()
         with torch.no_grad():
             # label_map = {0: 'contradiction', 1: 'neutral', 2: 'entailment'}
             tokens = ROBERTA.encode(premise, hypotheis)
@@ -398,6 +435,25 @@ class SelfMixWorld(TeamDebateWorld):
             verdict = 1
 
         return verdict
+
+    def tokenize_and_preprocess_function(self, examples):
+        label_to_id = {'convai2': 0, 'empathetic_dialogues': 1, 'wizard_of_wikipedia': 2}
+        result =  self.tokenizer(examples['text'], padding="max_length", truncation=True)
+        if label_to_id is not None and "label" in examples:
+            result["label"] = [(label_to_id[l] if l != -1 else -1) for l in examples["label"]]
+        return result
+
+    def task_specific_check(self, response):
+        response_set = Dataset.from_dict({'text': [response], 'label': ['convai2']})
+        tokenized_response = response_set.map(self.tokenize_and_preprocess_function, batched=True)
+        predictions = self.skill_classifier.predict(test_dataset=tokenized_response).predictions
+        predictions = self.softmax(predictions)
+        if(max(predictions[0])) > 0.4:
+            verdict = 1
+        else:
+            verdict = 0
+        return verdict
+
 
     def filter_out(self, response_candidates, contexts):
         debug = False
@@ -431,6 +487,7 @@ class SelfMixWorld(TeamDebateWorld):
                             continue
                         if debug: print('Virdict', virdicts[m][n])
                         if debug: print()
+                        virdicts[m][n] &= self.task_specific_check(claim)
                         virdicts[m][n] &= self.fact_check(context, claim)
                         if short: 
                             # if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]} #{j+1}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
