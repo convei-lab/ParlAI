@@ -154,3 +154,6 @@ crowdsourcing/**/package-lock.json
 pbst.code-workspace
 data/
 archive/
+
+# MINJU
+scripts_mj/

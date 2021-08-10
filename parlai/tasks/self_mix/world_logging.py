@@ -210,7 +210,8 @@ class DebateLogger(WorldLogger):
             
         # For debug
         dt = opt['datatype'].split(':')[0]
-        ana_path = os.path.join(opt['datapath'], 'pbst', f'machine_analysis_{dt}.json')
+        # ana_path = os.path.join(opt['datapath'], 'pbst', f'machine_analysis_{dt}.json')
+        ana_path = opt['outfile'][:-4] + '.json'
         logging.info(f'Saving analytical dataset to {ana_path}')
             
         with PathManager.open(outfile, 'w') as fw, PathManager.open(ana_path, 'w') as afw:

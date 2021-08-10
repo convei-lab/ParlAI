@@ -4,7 +4,7 @@ cd ..
 
 parlai self_mix \
 --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
---num-self-mixs 2 \
+--num-self-mixs 15 \
 --selfmix-max-turns 6 \
 --datatype valid \
 --expert-model-files zoo:dodecadialogue/convai2_ft/model,zoo:dodecadialogue/wizard_of_wikipedia_ft/model,zoo:dodecadialogue/empathetic_dialogues_ft/model \
@@ -15,4 +15,6 @@ parlai self_mix \
 --skip-generation False --inference nucleus \
 --beam-size 3 \
 --beam-min-length 10 --beam-block-ngram 3 --beam-context-block-ngram 3 \
---save-format parlai
+--save-format parlai \
+--use-skill-classifier False \
+--outfile /home/minju/bst/file.txt

@@ -93,6 +93,12 @@ def setup_args(parser=None):
         default=None,
         help='Seed range if you want to split seed set and train in parallel',
     )
+    parser.add_argument(
+        '--use-skill-classifier',
+        type='bool',
+        default=True,
+        help='Use skill classifier while filtering',
+    )
 
     parser.set_defaults(interactive_mode=True, task='self_mix')
     DebateLogger.add_cmdline_args(parser, partial_opt=None)
@@ -172,12 +178,17 @@ def self_mix(opt):
         ranker_opt['interactive_mode'] = True
         ranker_opt['candidates'] = 'fixed'
         ranker_opt['eval_candidates'] = 'fixed'
-        ranker_opt['fixed_candidates_path'] = opt['datapath'] + '/response_candidates.txt'
+        ranker_opt['fixed_candidates_path'] = opt['outfile'][:-4] + '_response_candidates.txt'
         ranker_opt['ignore_bad_candidates'] = True
         ranker_opt['encode_candidate_vecs'] = True
         ranker_opt['allow_missing_init_ranker_opts'] = True
         ranker_opt['fixed_candidate_vecs'] = 'replace'
         # ranker_opt['gpu'] = -1
+
+        # Make dummy candidates for initialization
+        f = open(ranker_opt['fixed_candidates_path'], 'w')
+        f.write('Hi\nHello\nNice to meet you.\n')
+        f.close()
 
         model = create_agent_from_model_file(expert_model_files[i], ranker_opt)
         retrieval_experts.append(model)

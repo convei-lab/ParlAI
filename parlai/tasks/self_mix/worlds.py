@@ -21,8 +21,8 @@ from parlai.core.agents import create_agent, create_agent_from_model_file
 import os
 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
-from datasets import load_dataset, load_metric
-from datasets import Dataset
+from datasets import load_metric, Dataset
+import json
 
 ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli').cuda()
 
@@ -92,8 +92,9 @@ class SelfMixWorld(TeamDebateWorld):
         self.episode_cnt = 0
         self.nsubtask = len(self.opt.get('subtasks'))
         self.world_name = 'SelfMixWorld'
-        self.init_skill_classifier()
         ROBERTA.eval()
+        if opt['use_skill_classifier']:
+            self.init_skill_classifier()
 
     def init_contexts(self, shared=None) -> None:
         """
@@ -448,6 +449,10 @@ class SelfMixWorld(TeamDebateWorld):
         tokenized_response = response_set.map(self.tokenize_and_preprocess_function, batched=True)
         predictions = self.skill_classifier.predict(test_dataset=tokenized_response).predictions
         predictions = self.softmax(predictions)
+
+        with open("/home/minju/skill_classifier/prediction_result.jsonl", 'a') as f:
+            f.write(json.dumps({'text': response, 'prediction': predictions.tolist()}) + "\n")
+
         if(max(predictions[0])) > 0.4:
             verdict = 1
         else:
@@ -487,7 +492,8 @@ class SelfMixWorld(TeamDebateWorld):
                             continue
                         if debug: print('Virdict', virdicts[m][n])
                         if debug: print()
-                        virdicts[m][n] &= self.task_specific_check(claim)
+                        if self.opt['use_skill_classifier']:
+                            virdicts[m][n] &= self.task_specific_check(claim)
                         virdicts[m][n] &= self.fact_check(context, claim)
                         if short: 
                             # if virdicts[m][n] == False: print(f'Cross-domain contradiction on fact-checking #{cnt}\nContext - {subtasks[i]} #{j+1}:\n{context}\nClaim - {subtasks[m]} #{n+1}:\n\t{claim} => Filtered Out\n')
@@ -533,7 +539,8 @@ class SelfMixWorld(TeamDebateWorld):
 
         # Create response candidate file for fixed candidate
         response_candidates_list = []
-        f = open(self.opt.get('datapath') + '/response_candidates.txt', 'w')
+        data_path = os.path.dirname(self.opt.get('outfile'))
+        f = open(self.opt.get('outfile')[:-4] + '_response_candidates.txt', 'w')
         for i in range(num_agents):
             for j in range(beam_size):
                 f.write(response_candidates[i][j][0] + '\n')
