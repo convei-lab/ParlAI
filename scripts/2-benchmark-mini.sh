@@ -17,4 +17,5 @@ parlai self_mix \
 --beam-min-length 10 --beam-block-ngram 3 --beam-context-block-ngram 3 \
 --save-format parlai \
 --use-skill-classifier False \
---outfile /home/minju/bst/file.txt
+--outfile /home/minju/bst/file.txt \
+--ranker-model-files zoo:pretrained_transformers/model_poly/model,/home/minju/empathetic_dialogues_poly/model.checkpoint,/home/minju/wizard_of_wikipedia_poly/model.checkpoint

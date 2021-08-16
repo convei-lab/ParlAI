@@ -53,6 +53,7 @@ def load_openers(opt) -> Optional[List[str]]:
     # run through task data, collecting all first messages
     # openers = set()
     openers = []
+    source_list = []
     is_first_turn = True
     while not task_world.epoch_done():
         task_world.parley()
@@ -60,6 +61,7 @@ def load_openers(opt) -> Optional[List[str]]:
         # add only the first message in the episode
         if is_first_turn and msg.get('text') and msg.get('eval_labels'):
             openers.append([msg['text'], msg['eval_labels'][0]])
+            source_list.append(msg.get('source_task'))
         is_first_turn = msg.get('episode_done', False)
     # for opener in openers:
     #     print('opener', opener)
@@ -68,9 +70,11 @@ def load_openers(opt) -> Optional[List[str]]:
     if opt['seed_range'] != None:
         seed_start, seed_end = opt['seed_range'].split(',')
         openers = openers[int(seed_start): int(seed_end)]
+        source_list = source_list[int(seed_start): int(seed_end)]
 
     print(f'[ loaded {len(openers)} openers ]')
-    return openers
+    assert len(openers) == len(source_list)
+    return openers, source_list
 
 
 def load_openers_from_file(filepath: str) -> List[str]:
@@ -95,6 +99,8 @@ class SelfMixWorld(TeamDebateWorld):
         ROBERTA.eval()
         if opt['use_skill_classifier']:
             self.init_skill_classifier()
+        self.active_flags = [1, 0, 0]
+        self.task_to_index = {self.opt.get('subtasks')[0]:0, self.opt.get('subtasks')[1]:1, self.opt.get('subtasks')[2]:2}
 
     def init_contexts(self, shared=None) -> None:
         """
@@ -116,7 +122,7 @@ class SelfMixWorld(TeamDebateWorld):
         mix.
         """
         if self.opt.get('seed_messages_from_task'):
-            self._openers = load_openers(self.opt)
+            self._openers, self._source_list = load_openers(self.opt)
         elif self.opt.get('seed_messages_from_file'):
             self._openers = load_openers_from_file(self.opt['seed_messages_from_file'])
 
@@ -257,6 +263,8 @@ class SelfMixWorld(TeamDebateWorld):
             self.seed_utterances = self._get_seed_utt_acts(
                 self.episode_cnt, self.agents
             )
+            self.active_flags = [0, 0, 0]
+            self.active_flags[self.task_to_index[self._source_list[self.episode_cnt]]] = 1
         if self.contexts is not None:
             assert len(self.contexts) == self.nsubtask
 
@@ -352,10 +360,12 @@ class SelfMixWorld(TeamDebateWorld):
             
             # Leaders debate
             verdicts = self.filter_out(response_candidates, self.documents[:,0]) # TODO provide only leader's context
-            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts, self.documents[:,0])
-            for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
+            decisions, rank_scores, score_dist, (expertise_id, beam_id) = self.decide(response_candidates, verdicts, self.documents[:,0])
+            for i, (verdict, decision, rank_score, dist) in enumerate(zip(verdicts, decisions, rank_scores, score_dist)):
                 acts[i][0].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][0].force_set('decision', ','.join(list(map(str, decision))))
+                acts[i][0].force_set('rank_score',','.join(list(map(str, rank_score))))
+                acts[i][0].force_set('score_dist', dist)
             if debug: input('Leaders debated\n')
 
             if debug:
@@ -394,10 +404,12 @@ class SelfMixWorld(TeamDebateWorld):
 
             # Followers debate
             verdicts = self.filter_out(response_candidates, self.documents[:,1])
-            decisions, (expertise_id, beam_id) = self.decide(response_candidates, verdicts, self.documents[:,1])
-            for i, (verdict, decision) in enumerate(zip(verdicts, decisions)):
+            decisions, rank_scores, score_dist, (expertise_id, beam_id) = self.decide(response_candidates, verdicts, self.documents[:,1])
+            for i, (verdict, decision, rank_score, dist) in enumerate(zip(verdicts, decisions, rank_scores, score_dist)):
                 acts[i][1].force_set('verdict', ','.join(list(map(str, verdict))))
                 acts[i][1].force_set('decision', ','.join(list(map(str, decision))))
+                acts[i][1].force_set('rank_score',','.join(list(map(str, rank_score))))
+                acts[i][1].force_set('score_dist', dist)
             if debug: input('Followers debated\n')
             
             if debug: 
@@ -487,9 +499,9 @@ class SelfMixWorld(TeamDebateWorld):
                         if claim == '': # TODO 그렇다고 empty premise에 대한 claim의 hypothesis를 보는 것도 웃기다. 확인 필요함.
                             virdicts[m][n] = 0
                             continue
-                        if i == m:
-                            if debug: print()
-                            continue
+                        # if i == m:
+                        #     if debug: print()
+                        #     continue
                         if debug: print('Virdict', virdicts[m][n])
                         if debug: print()
                         if self.opt['use_skill_classifier']:
@@ -550,20 +562,31 @@ class SelfMixWorld(TeamDebateWorld):
         # skill-aware rankers observe history and sCtx
         retrieval_results = []
         for i in range(num_agents):
-            context = Message({'text': documents[i], 'episode_done': False, 'id': 'context'})
-            self.retrieval_experts[i].set_fixed_candidates(False)
-            self.retrieval_experts[i].observe(validate(context))
-            for msg in self.dialogue_history:
-                self.retrieval_experts[i].observe(validate(msg))
-            retrieval_results.append(self.retrieval_experts[i].act()['text_candidates'])
+            if self.active_flags[i] :
+                context = Message({'text': documents[i], 'episode_done': False, 'id': 'context'})
+                self.retrieval_experts[i].set_fixed_candidates(False)
+                self.retrieval_experts[i].observe(validate(context))
+                for msg in self.dialogue_history:
+                    self.retrieval_experts[i].observe(validate(msg))
+                retrieval_results.append(self.retrieval_experts[i].act()['text_candidates'])
+            else:
+                retrieval_results.append([''] * len(response_candidates_list))
 
+        score_distribution = []
         score = virdicts
         max_score = -1
-
         for i in range(num_agents):
+            ranks_by_agent = []
             for j in range(beam_size):
                 try:
-                    score[i][j] = score[i][j] * ((retrieval_results[0].index(response_candidates_list[i * beam_size + j]) + 1) + (retrieval_results[1].index(response_candidates_list[i * beam_size + j]) + 1) + (retrieval_results[2].index(response_candidates_list[i * beam_size + j]) + 1))
+                    ranks = []
+                    for k in range(num_agents):
+                        if self.active_flags[k]:
+                            ranks.append(retrieval_results[k].index(response_candidates_list[i * beam_size + j]) + 1)
+                            score[i][j] += score[i][j] * self.active_flags[k] * ranks[k]
+                        else:
+                            ranks.append(0)
+                    ranks_by_agent.append(ranks)
                 except:
                     ic(set(response_candidates_list) - set(retrieval_results[0]))
                     ic(retrieval_results[0])
@@ -572,8 +595,18 @@ class SelfMixWorld(TeamDebateWorld):
                     max_score = score[i][j]
                     max_row = i
                     max_col = j
+            score_distribution.append(ranks_by_agent)
 
         decimat = np.zeros_like(virdicts)
         decimat[max_row][max_col] = 1
+        
+        # Oracle removes active flag and activates agent
+        for i in range(num_agents):
+            if i == max_row:
+                self.active_flags[i] = 1
+            else:
+                self.active_flags[i] = 0
+        #ic(score_distribution)
+        #ic(self.active_flags)
 
-        return decimat, (max_row, max_col)
+        return decimat, score, score_distribution, (max_row, max_col)
