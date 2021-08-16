@@ -62,11 +62,16 @@ def build(opt):
             build_data.remove_dir(dpath)
         build_data.make_dir(dpath)
 
-        # # Download the data.
-        # for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
-        #     build_data.make_dir(subtaskpath)
-        #     downloadable_file = RESOURCES[subtask]
-        #     downloadable_file.download_file(subtaskpath) 
+        # Download the data.
+        for subtask, subtaskpath in zip(opt['subtasks'], subtaskpaths):
+            if not build_data.built(subtaskpath):
+                build_data.make_dir(subtaskpath)
+                downloadable_file = RESOURCES[subtask]
+                downloadable_file.download_file(subtaskpath) 
+
+        # Mark the data as built.
+        for subtaskpath in subtaskpaths:
+            build_data.mark_done(subtaskpath, version)
 
         if 'empatheticdialogues' in opt['subtasks']:
             # Move empatheticdialogues to parent directory
@@ -735,11 +740,13 @@ def _get_line(episode: dict, num_entries: int, entry_idx: int, subtasks: List) -
         original_context = ''
     input_utterance = episode['leader']['seed']
     model_label = episode['follower']['seed']
+    source_task = episode['source_task']
 
     # Compile into text string
     parts = {
         'text': input_utterance,
         'labels': model_label,
+        'source_task': source_task
     }
     assert all([isinstance(part, str) for part in parts.values()])
     line = '\t'.join([f'{key}:{_escape(value)}' for key, value in parts.items()])

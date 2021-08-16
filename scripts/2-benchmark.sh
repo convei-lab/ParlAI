@@ -16,7 +16,8 @@ parlai self_mix \
 --beam-size 3 \
 --beam-min-length 10 --beam-block-ngram 3 --beam-context-block-ngram 3 \
 --save-format parlai \
---outfile /home/minju/bst/pbst_files/file.txt
+--outfile /home/minju/bst/pbst_files/file.txt \
+--ranker-model-files zoo:pretrained_transformers/model_poly/model,/home/minju/empathetic_dialogues_poly/model.checkpoint,/home/minju/wizard_of_wikipedia_poly/model.checkpoint
 
 # parlai self_mix \
 # --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
@@ -31,7 +32,8 @@ parlai self_mix \
 # --skip-generation False --inference nucleus \
 # --beam-size 3 \
 # --beam-min-length 10 --beam-block-ngram 3 --beam-context-block-ngram 3 \
-# --save-format parlai
+# --save-format parlai \
+# --ranker-model-files zoo:pretrained_transformers/model_poly/model,/home/minju/empathetic_dialogues_poly/model.checkpoint,/home/minju/wizard_of_wikipedia_poly/model.checkpoint
 
 # parlai self_mix \
 # --subtasks convai2,wizard_of_wikipedia,empatheticdialogues \
@@ -46,4 +48,5 @@ parlai self_mix \
 # --skip-generation False --inference nucleus \
 # --beam-size 3 \
 # --beam-min-length 10 --beam-block-ngram 3 --beam-context-block-ngram 3 \
-# --save-format parlai
+# --save-format parlai \
+# --ranker-model-files zoo:pretrained_transformers/model_poly/model,/home/minju/empathetic_dialogues_poly/model.checkpoint,/home/minju/wizard_of_wikipedia_poly/model.checkpoint
