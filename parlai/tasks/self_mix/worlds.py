@@ -574,7 +574,7 @@ class SelfMixWorld(TeamDebateWorld):
 
         score_distribution = []
         score = virdicts
-        max_score = -1
+        min_score = 9999
         for i in range(num_agents):
             ranks_by_agent = []
             for j in range(beam_size):
@@ -591,8 +591,8 @@ class SelfMixWorld(TeamDebateWorld):
                     ic(set(response_candidates_list) - set(retrieval_results[0]))
                     ic(retrieval_results[0])
                     score[i][j] = 0
-                if score[i][j] > max_score:
-                    max_score = score[i][j]
+                if score[i][j] != 0 and score[i][j] < min_score:
+                    min_score = score[i][j]
                     max_row = i
                     max_col = j
             score_distribution.append(ranks_by_agent)
