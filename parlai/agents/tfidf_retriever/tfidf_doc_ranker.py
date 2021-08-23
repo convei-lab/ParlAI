@@ -89,7 +89,7 @@ class TfidfDocRanker(object):
             if self.strict:
                 raise RuntimeError('No valid word in: %s' % query)
             else:
-                logger.warning('No valid word in: %s' % query)
+                # logger.warning('No valid word in: %s' % query)
                 return sp.csr_matrix((1, self.hash_size))
 
         # Count TF

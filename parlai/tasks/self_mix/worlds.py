@@ -597,6 +597,10 @@ class SelfMixWorld(TeamDebateWorld):
                     max_col = j
             score_distribution.append(ranks_by_agent)
 
+        if min_score == 9999:
+            max_row = 0
+            max_col = 0
+
         decimat = np.zeros_like(virdicts)
         decimat[max_row][max_col] = 1
         

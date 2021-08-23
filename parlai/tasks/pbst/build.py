@@ -53,7 +53,7 @@ def build(opt):
         subtaskpaths = []
 
         for subtask in opt['subtasks']:
-            subtaskpath = os.path.join(dpath, subtask)
+            subtaskpath = os.path.join(opt['datapath'], subtask)
             subtaskpaths.append(subtaskpath)
         
         logging.info('building data: ' + dpath)
@@ -120,6 +120,7 @@ def _convai_parser(filepath
     # Collecting
     persona1, persona2, seed_pair = [], [], None
     episode_done = False
+    all_seed_pairs = []
     
     def roleswap(persona_list):
         for i, persona_sent in enumerate(persona_list):
@@ -150,18 +151,20 @@ def _convai_parser(filepath
                 # print(leading_contexts[-1])
                 # print(following_contexts[-1])
                 # input()
+                all_seed_pairs.append([seed_pair[1], nextpair[0]])
             else:
                 seed_list.append(seed_pair)
                 leading_contexts.append('\n'.join(persona1)) 
                 following_contexts.append('\n'.join(persona2))
+                all_seed_pairs.append(seed_pair)
             responses.extend([seed_pair[0], seed_pair[1]])
             episode_done = True
             persona1, persona2, seed_pair = [], [], []
         else:
             utt_pair = line.split('\t')
             responses.extend([utt_pair[0], utt_pair[1]])
-    
-    assert len(leading_contexts) == len(following_contexts) == len(seed_list)
+            all_seed_pairs.append([utt_pair[0], utt_pair[1]])
+            
 
     if debug:
         for i, (leading_context, following_context, seed) in enumerate(zip(leading_contexts, following_contexts, seed_list)):
@@ -177,7 +180,7 @@ def _convai_parser(filepath
             print(response)
             input()
 
-    return leading_contexts, following_contexts, seed_list, responses
+    return leading_contexts, following_contexts, seed_list, responses, all_seed_pairs
 
 def _wizard_of_wikipedia_parser(filepath
     ) -> Tuple[List[str], List[str], List[str], List[str]]:
@@ -186,6 +189,7 @@ def _wizard_of_wikipedia_parser(filepath
 
     print('Parsing wizard_of_wikipedia on', filepath)
     leading_contexts, following_contexts, seed_list, responses = [], [], [], []
+    all_seed_pairs = []
 
     topic_list, passage_list, persona_list = [], [], []
     with open(filepath, 'r') as file:
@@ -214,9 +218,17 @@ def _wizard_of_wikipedia_parser(filepath
         # passage = chosen_topic_passage[0] 
         if dialog[0]['speaker'].endswith('Apprentice'): 
             # 1_Apprentice first and 0_Wizard second
+            for i in range(0, len(dialog), 2):
+                if i+1 < len(dialog):
+                    seed_pair = [dialog[i]['text'], dialog[i+1]['text']]
+                    all_seed_pairs.append(seed_pair)
             seed_pair = [utt['text'] for utt in dialog[:2]]
         else: 
             # 0_Wizard first and 1_Apprentice second
+            for i in range(1, len(dialog), 2):
+                if i+1 < len(dialog):
+                    seed_pair = [dialog[i]['text'], dialog[i+1]['text']]
+                    all_seed_pairs.append(seed_pair)
             seed_pair = [utt['text'] for utt in dialog[1:3]]
         topic_list.append(topic)
         passage_list.append(passage)
@@ -239,7 +251,6 @@ def _wizard_of_wikipedia_parser(filepath
         #     if j < 3:
         #         print('Speaker', speaker, text)
         #         input()
-
 
     assert  len(topic_list) == len(passage_list) == len(seed_list) == len(persona_list)
 
@@ -267,7 +278,7 @@ def _wizard_of_wikipedia_parser(filepath
             print(response)
             input()
 
-    return leading_contexts, following_contexts, seed_list, responses
+    return leading_contexts, following_contexts, seed_list, responses, all_seed_pairs
 
 def _empatheticdialogues_parser(filepath
     ) -> Tuple[List[str], List[str], List[str], List[str]]:
@@ -276,6 +287,7 @@ def _empatheticdialogues_parser(filepath
 
     print('Parsing empatheticdialogues on', filepath)
     leading_contexts, following_contexts, seed_list, responses = [], [], [], []
+    all_seed_pairs = []
 
     situation_list, emotion_list, seed_list = [], [], []
 
@@ -289,6 +301,10 @@ def _empatheticdialogues_parser(filepath
     emotion_list = df.groupby('conv_id').agg({'context':lambda x: list(x)[0]})['context']
     seed_list = df.groupby('conv_id').agg({'utterance':lambda x: list(x)[:2]})['utterance']
     responses = df['utterance']
+
+    for i in range(0, len(df['utterance']), 2):
+        if i + 1 < len(df['utterance']):
+            all_seed_pairs.append([df['utterance'].iloc[i], df['utterance'].iloc[i+1]])
 
     # Check
     remove_idx = []
@@ -323,21 +339,20 @@ def _empatheticdialogues_parser(filepath
                 break
             print(response)
             input()
-
-    return leading_contexts, following_contexts, seed_list, responses
+    return leading_contexts, following_contexts, seed_list, responses, all_seed_pairs
 
 def parser_switch():
     parser_switch = {
         'convai2': {
-            'files': ['train_both_original_no_cands.txt'], # 'valid_both_original_no_cands.txt'
+            'files': ['train_both_original_no_cands.txt', 'valid_both_original_no_cands.txt'],
             'func': _convai_parser,
         },
         'wizard_of_wikipedia': {
-            'files': ['train.json', 'valid_random_split.json'], # 'test_random_split.json'
+            'files': ['train.json', 'valid_random_split.json', 'test_random_split.json'],
             'func': _wizard_of_wikipedia_parser,
         },
         'empatheticdialogues': {
-            'files': ['train.csv', 'valid.csv'], # 'test.csv'
+            'files': ['train.csv', 'valid.csv', 'test.csv'],
             'func': _empatheticdialogues_parser,
         }
     }
@@ -347,19 +362,21 @@ def _parse_task_dataset(subtask, subtaskpath
     ) -> Tuple[List[str], List[str], List[List[str]]]:
     # Collect the context and the seed utterance pair of each episode
     leading_contextss, following_contextss, seeds, responses = [], [], [], []
+    all_seed_pairs = []
 
     # Identify correct parser and iterate all files to parse
     parser = parser_switch()[subtask]
     for file in parser['files']:
         filepath = os.path.join(subtaskpath, file)
-        fleading_contextss, ffollowing_contextss, fseeds, fresponses = parser['func'](filepath)
+        fleading_contextss, ffollowing_contextss, fseeds, fresponses, fall_seed_pairs = parser['func'](filepath)
         leading_contextss.extend(fleading_contextss)
         following_contextss.extend(ffollowing_contextss)
         seeds.extend(fseeds)
         responses.extend(fresponses)
-    return leading_contextss, following_contextss, seeds, responses
+        all_seed_pairs.extend(fall_seed_pairs)
+    return leading_contextss, following_contextss, seeds, responses, all_seed_pairs
 
-def _retrieve_contextual_document(seed_queries, contextual_docs, teacher, origin, target, subtaskpath):
+def _retrieve_contextual_document(origin_opt, seed_queries, contextual_docs, teacher, origin, target, subtaskpath):
     '''
         retreival: query (seed utterances) -> document (contexts)
     '''
@@ -438,7 +455,7 @@ def _retrieve_contextual_document(seed_queries, contextual_docs, teacher, origin
     # Lexical Retrieval??
     elif teacher == 'lexical_retrieval':
 
-        parlai_data_path = subtaskpath[:subtaskpath.find('/pbst')]
+        parlai_data_path = origin_opt['datapath']
         src2trg = f'{origin}->{target}'
 
         # Loading TF-IDF Retriever Model
@@ -532,22 +549,25 @@ def _build_context_and_response(opt, subtaskpaths):
 
     # Collect task-wise contexts and seeds
     for subtask, subtaskpath in zip(subtasks, subtaskpaths):
-        leading_contexts, following_contexts, seeds, responses = _parse_task_dataset(subtask, subtaskpath)
+        leading_contexts, following_contexts, seeds, responses, all_seed_pairs = _parse_task_dataset(subtask, subtaskpath)
         lc = os.path.join(opt['datapath'], 'pbst', f'leading_{subtask}_kb.json')
         fc = os.path.join(opt['datapath'], 'pbst', f'following_{subtask}_kb.json')
         su = os.path.join(opt['datapath'], 'pbst', f'seed_utterance_pairs_{subtask}.json')
         rc = os.path.join(opt['datapath'], 'pbst', f'responses_candidates_{subtask}.json')
-        with open(lc, 'w') as f0, open(fc, 'w') as f1, open(su, 'w') as f2, open(rc, 'w') as f3:
+        asp = os.path.join(opt['datapath'], 'pbst', f'all_seed_utterance_pairs_{subtask}.json')
+        with open(lc, 'w') as f0, open(fc, 'w') as f1, open(su, 'w') as f2, open(rc, 'w') as f3, open(asp, 'w') as f4:
             json.dump(leading_contexts, f0)
             json.dump(following_contexts, f1)
             json.dump(seeds, f2)
             json.dump(responses, f3)
+            json.dump(all_seed_pairs, f4)
         assert len(leading_contexts) == len(following_contexts) == len(seeds)
         leading_context_dic[subtask] = leading_contexts
         following_context_dic[subtask] = following_contexts
-        seed_dic[subtask] = seeds
+        seed_dic[subtask] = all_seed_pairs
         response_candidates[subtask] = responses
-        print(f'{len(seeds)} contexts and seed utterances pairs were parsed from the {subtask}')
+        print(f'{len(seeds)} contexts were parsed from the {subtask}')
+        print(f'{len(all_seed_pairs)} seed utterances pairs were parsed from the {subtask}')
         print(f'Also, {len(responses)} response candidates were parsed from the {subtask}\n')
 
     # writing the maximum pool of response candidate sampled from each task datasets
@@ -567,26 +587,21 @@ def _build_context_and_response(opt, subtaskpaths):
         seed_pairs = np.array(seed_dic[origin])
         leading_seeds, following_seeds = seed_pairs[:,0], seed_pairs[:,1]
         for j, (target, subtaskpath) in enumerate(zip(subtasks, subtaskpaths)):
-
-            if i == j:
-                lcm[i][j] = leading_context_dic[origin]
-                fcm[i][j] = following_context_dic[origin]
+            leading_contexts = leading_context_dic[target]
+            following_contexts = following_context_dic[target]
+            # Retrieve contextual document from different task
+            # And align the seed with all the other subtask's context
+            if target == 'convai2':
+                lcm[i][j] = _retrieve_contextual_document(opt, leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                fcm[i][j] = _retrieve_contextual_document(opt, following_seeds, following_contexts, 'lexical_retrieval', origin, target+'_2', subtaskpath)
+            elif target == 'wizard_of_wikipedia':
+                lcm[i][j] = _retrieve_contextual_document(opt, [leading_seeds, following_seeds], leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                fcm[i][j] = copy.deepcopy(lcm[i][j]) # 일단은 fcm이 lcm을 따라가도록 해두었음
+                for k in range(len(lcm[i][j])):
+                    lcm[i][j][k] = lcm[i][j][k].split('\n')[0] # knowledge resource는 잘리도록...
             else:
-                leading_contexts = leading_context_dic[target]
-                following_contexts = following_context_dic[target]
-                # Retrieve contextual document from different task
-                # And align the seed with all the other subtask's context
-                if target == 'convai2':
-                    lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
-                    fcm[i][j] = _retrieve_contextual_document(following_seeds, following_contexts, 'lexical_retrieval', origin, target+'_2', subtaskpath)
-                elif target == 'wizard_of_wikipedia':
-                    lcm[i][j] = _retrieve_contextual_document([leading_seeds, following_seeds], leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
-                    fcm[i][j] = copy.deepcopy(lcm[i][j]) # 일단은 fcm이 lcm을 따라가도록 해두었음
-                    for k in range(len(lcm[i][j])):
-                        lcm[i][j][k] = lcm[i][j][k].split('\n')[0] # knowledge resource는 잘리도록...
-                else:
-                    lcm[i][j] = _retrieve_contextual_document(leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
-                    fcm[i][j] = [''] * len(lcm[i][j])
+                lcm[i][j] = _retrieve_contextual_document(opt, leading_seeds, leading_contexts, 'lexical_retrieval', origin, target+'_1', subtaskpath)
+                fcm[i][j] = [''] * len(lcm[i][j])
 
     context = []
 
@@ -607,7 +622,11 @@ def _build_context_and_response(opt, subtaskpaths):
             episode['follower']['context'] = {}
 
             for alignedtaskid, alignedtask in enumerate(subtasks):
-                episode['leader']['context'][alignedtask] = lcm[srctaskid][alignedtaskid][context_id]
+                try:
+                    episode['leader']['context'][alignedtask] = lcm[srctaskid][alignedtaskid][context_id] # 여기서 오류남
+                except:
+                    ic(context_id)
+                    raise RuntimeError
 
             for alignedtaskid, alignedtask in enumerate(subtasks):
                 episode['follower']['context'][alignedtask] = fcm[srctaskid][alignedtaskid][context_id]
