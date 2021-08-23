@@ -3,7 +3,7 @@ set -o xtrace
 cd ..
 
 parlai train_model --init-model zoo:pretrained_transformers/poly_model_huge_reddit/model \
--t pbst --model transformer/polyencoder --batchsize 32 \
+-t pbst --model transformer/polyencoder --batchsize 128 \
 --eval-batchsize 1 --warmup_updates 100 --lr-scheduler-patience 0 \
 --lr-scheduler-decay 0.4 -lr 5e-05 --data-parallel True --history-size 20 \
 --label-truncate 72 --text-truncate 360 --num-epochs 8.0 \
@@ -16,5 +16,5 @@ parlai train_model --init-model zoo:pretrained_transformers/poly_model_huge_redd
 --dropout 0.1 --n-positions 1024 --embedding-size 768 --activation gelu \
 --embeddings-scale False --n-segments 2 --learn-embeddings True \
 --polyencoder-type codes --poly-n-codes 64 --poly-attention-type basic \
---dict-endtoken __start__ --model-file ./data/models/poly_encoder/pbst \
+--dict-endtoken __start__ --model-file ./data/models/with_activate_min_kld_2/model \
 --eval_candidates inline

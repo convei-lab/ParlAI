@@ -23,6 +23,7 @@ import os
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
 from datasets import load_metric, Dataset
 import json
+from scipy.stats import entropy 
 
 ROBERTA = torch.hub.load('pytorch/fairseq', 'roberta.large.mnli').cuda()
 
@@ -97,8 +98,7 @@ class SelfMixWorld(TeamDebateWorld):
         self.nsubtask = len(self.opt.get('subtasks'))
         self.world_name = 'SelfMixWorld'
         ROBERTA.eval()
-        if opt['use_skill_classifier']:
-            self.init_skill_classifier()
+        self.init_skill_classifier()
         self.active_flags = [1, 0, 0]
         self.task_to_index = {self.opt.get('subtasks')[0]:0, self.opt.get('subtasks')[1]:1, self.opt.get('subtasks')[2]:2}
 
@@ -471,6 +471,17 @@ class SelfMixWorld(TeamDebateWorld):
             verdict = 0
         return verdict
 
+    def skill_classifier_func(self, response):
+        response_set = Dataset.from_dict({'text': [response], 'label': ['convai2']})
+        tokenized_response = response_set.map(self.tokenize_and_preprocess_function, batched=True)
+        predictions = self.skill_classifier.predict(test_dataset=tokenized_response).predictions
+        predictions = self.softmax(predictions)
+        return predictions
+
+    def get_entropy(self, utt1, utt2):
+        skill_distribution1 = self.skill_classifier_func(utt1)[0]
+        skill_distribution2 = self.skill_classifier_func(utt2)[0]
+        return float(entropy(skill_distribution1, qk = skill_distribution2))
 
     def filter_out(self, response_candidates, contexts):
         debug = False
@@ -563,6 +574,7 @@ class SelfMixWorld(TeamDebateWorld):
         retrieval_results = []
         for i in range(num_agents):
             if self.active_flags[i] :
+                active_agent_idx = i
                 context = Message({'text': documents[i], 'episode_done': False, 'id': 'context'})
                 self.retrieval_experts[i].set_fixed_candidates(False)
                 self.retrieval_experts[i].observe(validate(context))
@@ -574,7 +586,7 @@ class SelfMixWorld(TeamDebateWorld):
 
         score_distribution = []
         score = virdicts
-        max_score = -1
+        min_score = 9999
         for i in range(num_agents):
             ranks_by_agent = []
             for j in range(beam_size):
@@ -591,14 +603,26 @@ class SelfMixWorld(TeamDebateWorld):
                     ic(set(response_candidates_list) - set(retrieval_results[0]))
                     ic(retrieval_results[0])
                     score[i][j] = 0
-                if score[i][j] > max_score:
-                    max_score = score[i][j]
+                if score[i][j] != 0 and score[i][j] < min_score:
+                    min_score = score[i][j]
                     max_row = i
                     max_col = j
             score_distribution.append(ranks_by_agent)
 
+        if min_score == 9999:
+            ic(score)
+            max_row = 0
+            max_col = 0
+
         decimat = np.zeros_like(virdicts)
         decimat[max_row][max_col] = 1
+
+        if max_row != active_agent_idx:
+            if self.get_entropy(self.dialogue_history[-1]['text'], response_candidates[max_row][max_col][0]) <= 3:
+                pass
+            else:
+                max_row = active_agent_idx
+
         
         # Oracle removes active flag and activates agent
         for i in range(num_agents):
