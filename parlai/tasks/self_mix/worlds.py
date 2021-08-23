@@ -610,7 +610,6 @@ class SelfMixWorld(TeamDebateWorld):
             score_distribution.append(ranks_by_agent)
 
         if min_score == 9999:
-            ic(score)
             max_row = 0
             max_col = 0
 

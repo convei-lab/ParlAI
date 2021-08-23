@@ -103,7 +103,13 @@ def setup_args(parser=None):
         '--ranker-model-files',
         type=str,
         default='zoo:pretrained_transformers/model_poly/model,empathetic_dialogues_poly/model.checkpoint,wizard_of_wikipedia_poly/model.checkpoint',
-        help='Use skill classifier while filtering',
+        help='Put paths of ranker model files',
+    )
+    parser.add_argument(
+        '--activate-max-turn',
+        type=int,
+        default=-1,
+        help='If activate max turn is -1, you don\'t use activate setting, else put max turn that you want',
     )
 
     parser.set_defaults(interactive_mode=True, task='self_mix')
