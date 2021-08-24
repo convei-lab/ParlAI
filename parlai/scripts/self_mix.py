@@ -199,6 +199,8 @@ def self_mix(opt):
         # ranker_opt['gpu'] = -1
 
         # Make dummy candidates for initialization
+        if not os.path.exists(os.path.dirname(ranker_opt['fixed_candidates_path'])):
+            os.makedirs(os.path.dirname(ranker_opt['fixed_candidates_path']))
         f = open(ranker_opt['fixed_candidates_path'], 'w')
         f.write('Hi\nHello\nNice to meet you.\n')
         f.close()

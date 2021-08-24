@@ -67,6 +67,8 @@ def load_openers(opt) -> Optional[List[str]]:
     # for opener in openers:
     #     print('opener', opener)
 
+    ic(len(openers))
+
     # set seed range for pararell training
     if opt['seed_range'] != None:
         seed_start, seed_end = opt['seed_range'].split(',')
@@ -439,6 +441,8 @@ class SelfMixWorld(TeamDebateWorld):
         with torch.no_grad():
             # label_map = {0: 'contradiction', 1: 'neutral', 2: 'entailment'}
             tokens = ROBERTA.encode(premise, hypotheis)
+            if len(tokens) > 512:
+                tokens = tokens[:512]
             score = ROBERTA.predict('mnli', tokens)
             prediction = score.argmax().item()
         
@@ -617,7 +621,7 @@ class SelfMixWorld(TeamDebateWorld):
         decimat[max_row][max_col] = 1
 
         if max_row != active_agent_idx:
-            if self.get_entropy(self.dialogue_history[-1]['text'], response_candidates[max_row][max_col][0]) <= 3:
+            if self.get_entropy(self.dialogue_history[-1]['text'], response_candidates[max_row][max_col][0]) <= 4:
                 pass
             else:
                 max_row = active_agent_idx

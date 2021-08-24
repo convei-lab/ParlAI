@@ -43,7 +43,7 @@ RESOURCES = {
     )
 }
 
-SPLIT_RATIO = OrderedDict({'train': 0.6, 'valid': 0.3, 'test': 0.1})
+SPLIT_RATIO = OrderedDict({'train': 0.8, 'valid': 0.1, 'test': 0.1})
 
 def build(opt):
     version = 'v0.0'
