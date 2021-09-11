@@ -16,5 +16,5 @@ parlai train_model --init-model zoo:pretrained_transformers/poly_model_huge_redd
 --dropout 0.1 --n-positions 1024 --embedding-size 768 --activation gelu \
 --embeddings-scale False --n-segments 2 --learn-embeddings True \
 --polyencoder-type codes --poly-n-codes 64 --poly-attention-type basic \
---dict-endtoken __start__ --model-file ./data/models/with_activate_min_kld_2/model \
+--dict-endtoken __start__ --model-file ./data/models/final_200k_pbst_ft/model \
 --eval_candidates inline

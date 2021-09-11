@@ -563,7 +563,7 @@ class SelfMixWorld(TeamDebateWorld):
     def decide(self, response_candidates, virdicts, documents):
         num_agents = len(response_candidates)
         beam_size = len(response_candidates[0])
-
+        
         # Create response candidate file for fixed candidate
         response_candidates_list = []
         data_path = os.path.dirname(self.opt.get('outfile'))
@@ -591,6 +591,7 @@ class SelfMixWorld(TeamDebateWorld):
         score_distribution = []
         score = virdicts
         min_score = 9999
+        select_rank1 = 9999
         for i in range(num_agents):
             ranks_by_agent = []
             for j in range(beam_size):
@@ -607,10 +608,11 @@ class SelfMixWorld(TeamDebateWorld):
                     ic(set(response_candidates_list) - set(retrieval_results[0]))
                     ic(retrieval_results[0])
                     score[i][j] = 0
-                if score[i][j] != 0 and score[i][j] < min_score:
+                if score[i][j] != 0 and score[i][j] < min_score and j < select_rank1:
                     min_score = score[i][j]
                     max_row = i
                     max_col = j
+                    select_rank1 = j
             score_distribution.append(ranks_by_agent)
 
         if min_score == 9999:
@@ -618,10 +620,10 @@ class SelfMixWorld(TeamDebateWorld):
             max_col = 0
 
         decimat = np.zeros_like(virdicts)
-        decimat[max_row][max_col] = 1
+        decimat[max_row][select_rank1] = 1
 
         if max_row != active_agent_idx:
-            if self.get_entropy(self.dialogue_history[-1]['text'], response_candidates[max_row][max_col][0]) <= 4:
+            if self.get_entropy(self.dialogue_history[-1]['text'], response_candidates[max_row][max_col][0]) <= 3:
                 pass
             else:
                 max_row = active_agent_idx
@@ -633,7 +635,5 @@ class SelfMixWorld(TeamDebateWorld):
                 self.active_flags[i] = 1
             else:
                 self.active_flags[i] = 0
-        #ic(score_distribution)
-        #ic(self.active_flags)
 
         return decimat, score, score_distribution, (max_row, max_col)
